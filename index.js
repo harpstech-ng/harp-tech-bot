@@ -870,9 +870,13 @@ async function startBot() {
 process.on('uncaughtException', (err) => log.error('Uncaught exception:', err?.message || err));
 process.on('unhandledRejection', (err) => log.error('Unhandled rejection:', err?.message || err));
 
+console.log('=== BOT FILE LOADED ===');
+console.log('Starting HARP TECH bot...');
 startBot().catch((err) => {
-  log.error('Fatal startup error:', err?.message || err);
+  console.error('=== FATAL STARTUP ERROR ===');
+  console.error(err?.stack || err);
   setTimeout(() => {
-    startBot().catch((e) => log.error('Retry failed:', e?.message || e));
+    console.log('Retrying startBot...');
+    startBot().catch((e) => console.error('Retry failed:', e?.stack || e));
   }, 5000);
 });
