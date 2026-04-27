@@ -844,7 +844,7 @@ async function startBot() {
         const body = msg.message?.conversation || msg.message?.extendedTextMessage?.text || '';
         const text = body?.trim() || '';
 
-        await autoViewStatus(sock, msg);
+        // await autoViewStatus(sock, msg);
 
         // ===== HARPS TECH AUTO-REPLY SYSTEM =====
         const from = msg.key.remoteJid;
