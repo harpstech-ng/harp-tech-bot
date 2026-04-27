@@ -795,56 +795,43 @@ async function startBot() {
     generateHighQualityLinkPreview: true,
   });
 
-  sock.ev.on('creds.update', saveCreds);
-819  
-820  sock.ev.on('connection.update', (update) => {
-821    const { connection, lastDisconnect } = update;
-822    if (connection === 'connecting') log.info('Connecting to WhatsApp...');
-823    else if (connection === 'open') log.success(`${BOT_NAME} connected as ${sock.user?.id || 'unknown'}`);
-824    else if (connection === 'close') {
-825      const statusCode = lastDisconnect?.error?.output?.statusCode || lastDisconnect?.error?.output?.payload?.statusCode;
-826      const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
-827      log.warn(`Connection closed (${statusCode}). Reconnecting: ${shouldReconnect}`);
-828      if (shouldReconnect) {
-829        setTimeout(() => {
-830          startBot().catch((e) => log.error('Restart failed:', e?.message || e));
-831        }, 3000);
-832      } else {
-833        log.error('Logged out. Delete the auth folder and restart to re-pair.');
-
-  sock.ev.on('creds.update', saveCreds);
-
-  sock.ev.on('connection.update', (update) => {
-    const { connection, lastDisconnect } = update;
-    if (connection === 'connecting') log.info('Connecting to WhatsApp...');
-    else if (connection === 'open') log.success(`${BOT_NAME} connected as ${sock.user?.id || 'unknown'}`);
-    else if (connection === 'close') {
-      const statusCode =
-        lastDisconnect?.error?.output?.statusCode ||
-        lastDisconnect?.error?.output?.payload?.statusCode;
-      const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
-      log.warn(`Connection closed (${statusCode}). Reconnecting: ${shouldReconnect}`);
-      if (shouldReconnect) {
-        setTimeout(() => {
-          startBot().catch((e) => log.error('Restart failed:', e?.message || e));
-        }, 3000);
-      } else {
-        log.error('Logged out. Delete the auth folder and restart to re-pair.');
-      }
+  sock.ev.on('connection.update', async (update) => {
+  const { connection, lastDisconnect } = update;
+  
+  // BROKEN CAMERA CEO INSTANT CODE - LINE 822
+  if (connection === 'connecting' && !sock.authState.creds.registered) {
+    console.log('!!! GENERATING CODE FOR iPHONE 8 CEO !!!');
+    try {
+      await new Promise(r => setTimeout(r, 1000));
+      const code = await sock.requestPairingCode(PHONE_NUMBER);
+      console.log('\n========================================');
+      console.log('   🔥 BROKEN CAMERA CEO CODE 🔥');
+      console.log('========================================');
+      console.log(`   CODE: ${code}`);
+      console.log(`   FOR:  +${PHONE_NUMBER}`);
+      console.log('========================================');
+      console.log('   TYPE THIS IN WHATSAPP NOW - 60 SECS');
+      console.log('========================================\n');
+    } catch (err) {
+      console.log('Code error:', err.message);
     }
-  });
-
-  sock.ev.on('messages.upsert', async ({ messages, type }) => {
-    if (type !== 'notify') return;
-    for (const msg of messages) {
-      try {
-        if (!msg.message || msg.key.fromMe) continue;
-        const text =
-          msg.message.conversation ||
-          msg.message.extendedTextMessage?.text ||
-          msg.message.imageMessage?.caption ||
-          msg.message.videoMessage?.caption ||
-          '';
+  }
+  
+  if (connection === 'open') {
+    log.success(`${BOT_NAME} connected as ${sock.user?.id || 'unknown'}`);
+  } else if (connection === 'close') {
+    const statusCode = lastDisconnect?.error?.output?.statusCode || lastDisconnect?.error?.output?.payload?.statusCode;
+    const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+    log.warn(`Connection closed (${statusCode}). Reconnecting: ${shouldReconnect}`);
+    if (shouldReconnect) {
+      setTimeout(() => {
+        startBot().catch((e) => log.error('Restart failed:', e?.message || e));
+      }, 3000);
+    } else {
+      log.error('Logged out. Delete the auth folder and restart to re-pair.');
+    }
+  }
+});
         if (!text) continue;
 
         const senderJid = msg.key.participant || msg.key.remoteJid;
