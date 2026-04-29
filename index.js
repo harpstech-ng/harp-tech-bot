@@ -9,6 +9,7 @@ const {
   fetchLatestBaileysVersion,
   Browsers,
   makeCacheableSignalKeyStore,
+  downloadMediaMessage
 } = require('@whiskeysockets/baileys');
 const pino = require('pino');
 const fs = require('fs');
@@ -31,12 +32,13 @@ const {
   getPanelBalance: getSmmBalance,
   listPanelServices: listSmmServices,
 } = require('./smm');
+const { getNumber: get5SimNumber, getSms: get5SimSms } = require('./5sim');
 
 // ============================================================================
 // CONFIGURATION
 // ============================================================================
-const OWNER_NUMBER = '2348141612736';
-const PHONE_NUMBER = '2348141612736';
+const OWNER_NUMBER = process.env.OWNER_NUMBER || '2348141612736';
+const PHONE_NUMBER = process.env.PHONE_NUMBER || '2348141612736';
 const BOT_NAME = 'HARPS TECH';
 const BRAND_TAGLINE = 'Premium Digital Services Concierge';
 const PREFIX = '.';
@@ -44,6 +46,8 @@ const AUTH_FOLDER = path.join(__dirname, 'auth');
 const DB_FILE = path.join(__dirname, 'database.json');
 const SUPPORT_HANDLE = `wa.me/${OWNER_NUMBER}`;
 const PAY_INFO = 'Opay • 8141612736 • Okugbe Praise';
+const CHANNEL_LINK = process.env.CHANNEL_LINK || '';
+const GROUP_LINK = process.env.GROUP_LINK || '';
 
 // Load web tiers from web_config.json
 function loadWebTiers() {
@@ -61,8 +65,8 @@ function loadWebTiers() {
 // ============================================================================
 const logger = pino({ level: 'silent' });
 const log = {
-  info: (...a) => console.log('[INFO]',...a),
-  warn: (...a) => console.warn('[WARN]',...a),
+  info: (...a) => console.log('',...a),
+  warn: (...a) => console.warn('',...a),
   error: (...a) => console.error('[ERROR]',...a),
   success: (...a) => console.log('[OK]',...a),
 };
@@ -97,15 +101,17 @@ function genOrderId(prefix = 'HT') {
 function loadDB() {
   try {
     if (!fs.existsSync(DB_FILE)) {
-      fs.writeFileSync(DB_FILE, JSON.stringify({ users: {}, orders: [] }, null, 2));
+      fs.writeFileSync(DB_FILE, JSON.stringify({ users: {}, orders: [], groups: {}, demos: {} }, null, 2));
     }
     const data = JSON.parse(fs.readFileSync(DB_FILE, 'utf-8'));
     if (!data.users) data.users = {};
     if (!data.orders) data.orders = [];
+    if (!data.groups) data.groups = {};
+    if (!data.demos) data.demos = {};
     return data;
   } catch (err) {
     log.error('Failed to load database:', err.message);
-    return { users: {}, orders: [] };
+    return { users: {}, orders: [], groups: {}, demos: {} };
   }
 }
 
@@ -118,7 +124,7 @@ function getUser(jid, name = '') {
   const db = loadDB();
   const number = jid.split('@')[0];
   if (!db.users[number]) {
-    db.users[number] = { jid, name: name || number, balance: 0, joined: new Date().toISOString() };
+    db.users[number] = { jid, name: name || number, balance: 0, joined: new Date().toISOString(), daily: 0, chillMode: false };
     saveDB(db);
   } else {
     let dirty = false;
@@ -132,7 +138,7 @@ function getUser(jid, name = '') {
 function updateBalance(number, delta) {
   const db = loadDB();
   if (!db.users[number]) {
-    db.users[number] = { jid: `${number}@s.whatsapp.net`, name: number, balance: 0, joined: new Date().toISOString() };
+    db.users[number] = { jid: `${number}@s.whatsapp.net`, name: number, balance: 0, joined: new Date().toISOString(), daily: 0, chillMode: false };
   }
   db.users[number].balance = (db.users[number].balance || 0) + delta;
   saveDB(db);
@@ -149,6 +155,21 @@ function recordOrder(order) {
 function getUserOrders(number, limit = 5) {
   const db = loadDB();
   return db.orders.filter((o) => o.user === number).slice(-limit).reverse();
+}
+
+function getGroupSettings(groupId) {
+  const db = loadDB();
+  if (!db.groups[groupId]) {
+    db.groups[groupId] = { enabled: true, cruise: true };
+    saveDB(db);
+  }
+  return db.groups[groupId];
+}
+
+function setGroupSettings(groupId, settings) {
+  const db = loadDB();
+  db.groups[groupId] = {...db.groups[groupId],...settings };
+  saveDB(db);
 }
 
 // ============================================================================
@@ -189,6 +210,66 @@ const INSUFFICIENT_MSG =
   `*Payment:* ${PAY_INFO}\n` +
   `Once paid, message ${SUPPORT_HANDLE} with proof — your balance is credited within minutes.`;
 
+// BOT PACKAGES
+const BOT_PACKAGES = {
+  basic: { name: 'Basic Bot', price: 15000, features: 20, desc: 'Menu, Balance, AI, Airtime, Data' },
+  standard: { name: 'Standard Bot', price: 25000, features: 50, desc: 'All Basic + SMM, Web, Biz Services' },
+  pro: { name: 'Pro Bot', price: 40000, features: 80, desc: 'All Standard + Games, Referral, Channel Post' },
+  premium: { name: 'Premium Bot', price: 60000, features: 101, desc: 'All Pro + Voice Clone, Auto Status, Bulk SMS' }
+};
+
+// CHEAP TRIALS
+const GROWTH_TRIALS = {
+  '10fl': { name: '10 Instagram Followers', price: 50, service: 'IGF', qty: 10 },
+  '10tiktok': { name: '10 TikTok Followers', price: 50, service: 'TTF', qty: 10 },
+  '50likes': { name: '50 Instagram Likes', price: 30, service: 'IGL', qty: 50 },
+  '100views': { name: '100 TikTok Views', price: 20, service: 'TTV', qty: 100 }
+};
+
+// CRUISE QUOTES
+const CHILL_QUOTES = [
+  "Life na pot of beans, if you no get fire, you go chop am raw 😂",
+  "Money no dey tree, but if you plant am well, e go grow 💰",
+  "No stress yourself, problem no dey finish. Just dey breathe 🌬️",
+  "Hustle hard, but remember to chop. Empty stomach no dey code 😂",
+  "Today na today. Tomorrow na tomorrow. But money na now 💸"
+];
+
+const SAVAGE_REPLIES = [
+  "You dey whine me? 😂 Focus on making money not insulting bot",
+  "Your papa no train you? 😏 Respect HARPS TECH or comot",
+  "Omo you get mouth o 😂 But you get money? Type.pay",
+  "Insult no dey pay bills 💰 Send.menu make you blow",
+  "You think say na play? 😈 I be AI with anger issues"
+];
+
+const JOKES = [
+  "Why programmer no dey go party? Because e get too many BUGs 😂",
+  "Wetin be phone wey no get network? Ex-boyfriend 📱💔",
+  "How you know say food sweet? When you finish am before photo 😂",
+  "Why NEPA no dey smile? Because dem dey always TAKE light 😂⚡"
+];
+
+// AUTO-SAVAGE
+const CURSE_WORDS = ['fuck', 'shit', 'bastard', 'idiot', 'mumu', 'ode', 'fool', 'stupid', 'useless', 'yeye', 'mad'];
+
+function isCursed(text) {
+  const lower = text.toLowerCase();
+  return CURSE_WORDS.some(word => lower.includes(word));
+}
+
+async function autoSavage(sock, msg, from, pushName) {
+  const savageClapbacks = [
+    `@${msg.key.participant?.split('@')[0] || pushName} You dey mad? 😂 Focus on making money not insulting bot`,
+    `@${msg.key.participant?.split('@')[0] || pushName} Your papa no train you? 😏 Respect HARPS TECH or comot`,
+    `@${msg.key.participant?.split('@')[0] || pushName} Omo you get mouth o 😂 But you get money? Type.pay`,
+    `@${msg.key.participant?.split('@')[0] || pushName} Insult no dey pay bills 💰 Send.menu make you blow`,
+    `@${msg.key.participant?.split('@')[0] || pushName} You think say na play? 😈 I be AI with anger issues`
+  ];
+  const pick = savageClapbacks[Math.floor(Math.random() * savageClapbacks.length)];
+  await sock.sendMessage(from, { text: pick }, { quoted: msg });
+}
+
 // ============================================================================
 // COMMAND ROUTER
 // ============================================================================
@@ -198,6 +279,13 @@ async function handleCommand(sock, msg, body) {
   const senderNumber = senderJid.split('@')[0].split(':')[0];
   const pushName = msg.pushName || senderNumber;
   const user = getUser(`${senderNumber}@s.whatsapp.net`, pushName);
+  const isGroup = from.endsWith('@g.us');
+
+  // Check group settings
+  if (isGroup) {
+    const groupSet = getGroupSettings(from);
+    if (!groupSet.enabled && senderNumber!== OWNER_NUMBER) return;
+  }
 
   const args = body.trim().slice(PREFIX.length).split(/\s+/);
   const command = (args.shift() || '').toLowerCase();
@@ -207,6 +295,15 @@ async function handleCommand(sock, msg, body) {
     try {
       await sock.sendMessage(`${OWNER_NUMBER}@s.whatsapp.net`, { text });
     } catch (e) { /* ignore */ }
+  };
+
+  // Post to channel function
+  const postToChannel = async (text) => {
+    if (!CHANNEL_LINK) return;
+    try {
+      const channelId = CHANNEL_LINK.split('/').pop() + '@newsletter';
+      await sock.sendMessage(channelId, { text });
+    } catch (e) { log.error('Channel post failed:', e.message); }
   };
 
   switch (command) {
@@ -239,22 +336,86 @@ async function handleCommand(sock, msg, body) {
       return cmdServices(reply, args);
 
     case 'smm':
-      return cmdSmm(reply, notifyOwner, user, senderNumber, pushName, args);
+      return cmdSmm(reply, notifyOwner, postToChannel, user, senderNumber, pushName, args);
 
     case 'smmstatus':
       return cmdSmmStatus(reply, args);
 
     case 'web':
-      return cmdWeb(reply, notifyOwner, user, senderNumber, pushName, args);
+      return cmdWeb(reply, notifyOwner, postToChannel, user, senderNumber, pushName, args);
 
     case 'buy':
-      return cmdBuy(reply, notifyOwner, user, senderNumber, pushName, args);
+      return cmdBuy(reply, notifyOwner, postToChannel, user, senderNumber, pushName, args);
 
     case 'biz':
-      return cmdBiz(reply, notifyOwner, user, senderNumber, pushName, args);
+      return cmdBiz(reply, notifyOwner, postToChannel, user, senderNumber, pushName, args);
 
     case 'ai':
       return cmdAi(reply, user, senderNumber, pushName, args);
+
+    // BOT SELLING
+    case 'buybot':
+      return cmdBuyBot(reply, notifyOwner, user, senderNumber, pushName, args);
+
+    case 'demo':
+      return cmdDemo(reply, notifyOwner, user, senderNumber, pushName);
+
+    // NUMBER SHOP
+    case 'buynumber':
+      return cmdBuyNumber(reply, notifyOwner, postToChannel, user, senderNumber, pushName);
+
+    // CRUISE
+    case 'chill':
+      return cmdChill(reply, user, senderNumber, pushName);
+
+    case 'nochill':
+      return cmdNoChill(reply, user, senderNumber);
+
+    case 'savage':
+      return cmdSavage(reply);
+
+    case 'jokes':
+      return cmdJokes(reply);
+
+    case 'meme':
+      return cmdMeme(reply, user, senderNumber, args);
+
+    case 'ship':
+      return cmdShip(reply, args);
+
+    case 'truth':
+      return cmdTruth(reply, args);
+
+    case 'quiz':
+      return cmdQuiz(reply, from, sock);
+
+    case 'rps':
+      return cmdRPS(reply, args);
+
+    // GROUP CONTROL
+    case 'on':
+      return cmdGroupOn(reply, from, senderNumber);
+
+    case 'off':
+      return cmdGroupOff(reply, from, senderNumber);
+
+    case 'group':
+      return cmdGroupToggle(reply, from, senderNumber, args);
+
+    // GROWTH TRIALS
+    case 'growth':
+      return cmdGrowth(reply);
+
+    // DAILY BONUS
+    case 'daily':
+      return cmdDaily(reply, user, senderNumber);
+
+    // VOICE CLONE
+    case 'voice':
+      return cmdVoiceClone(reply, sock, msg, from, user, senderNumber, args);
+
+    case 'setvoice':
+      return cmdSetVoice(reply, sock, msg, senderNumber);
 
     // ── Admin only ─────────────────────────────────────────────
     case 'fund':
@@ -276,7 +437,7 @@ async function handleCommand(sock, msg, body) {
 }
 
 // ============================================================================
-// COMMAND IMPLEMENTATIONS
+// COMMAND IMPLEMENTATIONS - ALL 101+ FEATURES
 // ============================================================================
 function cmdMenu(reply, user, senderNumber) {
   const isAdmin = senderNumber === OWNER_NUMBER;
@@ -291,15 +452,24 @@ function cmdMenu(reply, user, senderNumber) {
     `• ${PREFIX}buy data [plan] [number]\n` +
     `• ${PREFIX}biz [code] — request a business service\n` +
     `• ${PREFIX}ai [question] — ask Gemini AI\n` +
+    `• ${PREFIX}buynumber — USA WhatsApp Number ₦4k\n` +
+    `\n*BOT PACKAGES*\n` +
+    `• ${PREFIX}buybot [basic/standard/pro/premium]\n` +
+    `• ${PREFIX}demo — Free 24hr demo\n` +
+    `\n*GROWTH TRIALS*\n` +
+    `• ${PREFIX}growth — 10 Followers ₦50\n` +
+    `\n*CRUISE*\n` +
+    `• ${PREFIX}chill • ${PREFIX}savage • ${PREFIX}jokes\n` +
+    `• ${PREFIX}meme • ${PREFIX}ship • ${PREFIX}truth\n` +
+    `• ${PREFIX}quiz • ${PREFIX}rps • ${PREFIX}voice\n` +
     `\n*ACCOUNT*\n` +
-    `• ${PREFIX}balance • ${PREFIX}profile\n` +
-    `• ${PREFIX}orders • ${PREFIX}pay\n` +
-    `• ${PREFIX}support • ${PREFIX}about` +
+    `• ${PREFIX}balance • ${PREFIX}profile • ${PREFIX}daily\n` +
+    `• ${PREFIX}orders • ${PREFIX}pay • ${PREFIX}support` +
     (isAdmin
-     ? `\n\n*ADMIN*\n` +
+ ? `\n\n*ADMIN*\n` +
         `• ${PREFIX}fund [num] [amt] • ${PREFIX}users\n` +
         `• ${PREFIX}broadcast [msg] • ${PREFIX}smmbal\n` +
-        `• ${PREFIX}smmlist [search]`
+        `• ${PREFIX}on / ${PREFIX}off • ${PREFIX}setvoice`
       : '');
   return reply(panel('Service Concierge', body));
 }
@@ -311,8 +481,11 @@ function cmdAbout(reply) {
     `• Web hosting (GitHub Pages, 4 quality tiers)\n` +
     `• 50+ social boosts across 12 platforms\n` +
     `• Airtime & data top-up (all NG networks)\n` +
+    `• USA WhatsApp Numbers ₦4k\n` +
     `• Brand identity, design & marketing services\n` +
     `• AI assistance powered by Google Gemini\n` +
+    `• Bot packages ₦15k - ₦60k\n` +
+    `• Voice Clone Technology\n` +
     `\nFounded and operated by *Okugbe Praise* — Harps Tech.`;
   return reply(panel('About Harps Tech', body));
 }
@@ -354,6 +527,7 @@ function cmdSupport(reply) {
   const body =
     `Need help? We're here.\n\n` +
     `*WhatsApp:* ${SUPPORT_HANDLE}\n` +
+    `*Channel:* ${CHANNEL_LINK || 'Coming soon'}\n` +
     `*Owner:* Okugbe Praise\n` +
     `*Hours:* Mon–Sat, 8am–10pm WAT`;
   return reply(panel('Customer Support', body));
@@ -379,7 +553,8 @@ function cmdServices(reply, args) {
       `*${PREFIX}services web* — GitHub web hosting tiers\n` +
       `*${PREFIX}services airtime* — Airtime networks\n` +
       `*${PREFIX}services data* — Data plans (all networks)\n` +
-      `*${PREFIX}services biz* — Branding, design & business services`;
+      `*${PREFIX}services biz* — Branding, design & business services\n` +
+      `*${PREFIX}services bots* — Bot packages ₦15k-₦60k`;
     return reply(panel('Service Catalog', body));
   }
 
@@ -390,8 +565,8 @@ function cmdServices(reply, args) {
     for (const platform of Object.keys(grouped)) {
       body += `\n*${platform.toUpperCase()}*\n`;
       body += grouped[platform]
-       .map((s) => ` ${s.code.padEnd(5)} ${s.name}\n ${fmtNGN(s.pricePerK)}/1k • min ${s.min.toLocaleString()} • max ${s.max.toLocaleString()}`)
-       .join('\n');
+   .map((s) => ` ${s.code.padEnd(5)} ${s.name}\n ${fmtNGN(s.pricePerK)}/1k • min ${s.min.toLocaleString()} • max ${s.max.toLocaleString()}`)
+   .join('\n');
       body += '\n';
     }
     body += `\n*How to order:*\n${PREFIX}smm [code] [link] [quantity]\n*Example:* ${PREFIX}smm IGF https://instagram.com/yourhandle 1000`;
@@ -420,8 +595,8 @@ function cmdServices(reply, args) {
   if (cat === 'data') {
     const body =
       Object.entries(DATA_PLANS)
-       .map(([code, p]) => ` ${code.padEnd(8)} ${p.network.padEnd(8)} ${p.name.padEnd(20)} ${fmtNGN(p.price)}`)
-       .join('\n') +
+   .map(([code, p]) => ` ${code.padEnd(8)} ${p.network.padEnd(8)} ${p.name.padEnd(20)} ${fmtNGN(p.price)}`)
+   .join('\n') +
       `\n\n*How to order:*\n${PREFIX}buy data [plan] [number]\n*Example:* ${PREFIX}buy data MTN-2GB 08163738389`;
     return reply(panel('Data Plans', body));
   }
@@ -429,17 +604,26 @@ function cmdServices(reply, args) {
   if (cat === 'biz') {
     const body =
       Object.entries(BIZ_SERVICES)
-       .map(([code, s]) => ` ${code.padEnd(12)} ${s.name.padEnd(28)} ${fmtNGN(s.price)}`)
-       .join('\n') +
+   .map(([code, s]) => ` ${code.padEnd(12)} ${s.name.padEnd(28)} ${fmtNGN(s.price)}`)
+   .join('\n') +
       `\n\n*How to order:*\n${PREFIX}biz [code]\n*Example:* ${PREFIX}biz LOGO\n\nA Harps Tech specialist will reach out to scope your project.`;
     return reply(panel('Business Services', body));
+  }
+
+  if (cat === 'bots') {
+    const body =
+      Object.entries(BOT_PACKAGES)
+   .map(([key, b]) => `*${b.name}* - ${fmtNGN(b.price)}\n${b.desc}\nFeatures: ${b.features}\nCommand: ${PREFIX}buybot ${key}`)
+   .join('\n\n') +
+      `\n\n*Free Demo:* ${PREFIX}demo - 24hr trial`;
+    return reply(panel('Bot Packages', body));
   }
 
   return reply(panel('Service Catalog', `Unknown category: *${cat}*\nUse ${PREFIX}services to see categories.`));
 }
 
 // ──.smm [code] [link] [qty] ────────────────────────────────────────────────
-async function cmdSmm(reply, notifyOwner, user, senderNumber, pushName, args) {
+async function cmdSmm(reply, notifyOwner, postToChannel, user, senderNumber, pushName, args) {
   if (args.length < 3) {
     return reply(panel('SMM Order',
       `Usage:\n${PREFIX}smm [code] [link] [quantity]\n\n` +
@@ -491,6 +675,9 @@ async function cmdSmm(reply, notifyOwner, user, senderNumber, pushName, args) {
     `New SMM order\nUser: ${pushName} (${senderNumber})\nService: ${service.name}\nQty: ${quantity}\nLink: ${link}\nCharged: ${fmtNGN(cost)}\nPanel ID: ${panelOrderId}`
   );
 
+  // Post to channel
+  await postToChannel(`🔥 *NEW ORDER* 🔥\n\n${pushName} just ordered ${quantity} ${service.name}!\n\nJoin HARPS TECH: ${CHANNEL_LINK}`);
+
   return reply(panel('SMM Order Confirmed',
     `Service: *${service.name}*\nQuantity: ${quantity.toLocaleString()}\nLink: ${link}\n` +
     `Charged: *${fmtNGN(cost)}*\nNew balance: *${fmtNGN(newBal)}*\n\n` +
@@ -511,7 +698,7 @@ async function cmdSmmStatus(reply, args) {
 }
 
 // ──.web [tier] [sitename] ──────────────────────────────────────────────────
-async function cmdWeb(reply, notifyOwner, user, senderNumber, pushName, args) {
+async function cmdWeb(reply, notifyOwner, postToChannel, user, senderNumber, pushName, args) {
   const config = loadWebTiers();
   const WEB_TIERS_JSON = config.tiers;
   const GH_OWNER = config.github_username;
@@ -548,7 +735,7 @@ async function cmdWeb(reply, notifyOwner, user, senderNumber, pushName, args) {
 
   updateBalance(senderNumber, -tier.price);
   await reply(panel('Web Hosting',
-    `Building your *${tier.name}* site...\nThis takes a few seconds. Sit tight.`));
+    `Building your *${tier.name}* site...\nThis takes 10-30 seconds. Sit tight.`));
 
   try {
     const html = generateSiteHTML(tierNum, sitename);
@@ -558,7 +745,7 @@ async function cmdWeb(reply, notifyOwner, user, senderNumber, pushName, args) {
       updateBalance(senderNumber, tier.price);
       const explain =
         result.reason === 'repo_exists'
-         ? `The sitename *"${sitename}"* is already taken on GitHub. Please try a different one.`
+     ? `The sitename *"${sitename}"* is already taken on GitHub. Please try a different one.`
           : result.message || 'Deployment failed.';
       await notifyOwner(`Web hosting failed for ${senderNumber} (${sitename}): ${result.message}`);
       return reply(panel('Web Hosting', `${explain}\n\n*Refund:* ${fmtNGN(tier.price)} returned to your balance.`));
@@ -575,13 +762,15 @@ async function cmdWeb(reply, notifyOwner, user, senderNumber, pushName, args) {
       `New web hosting order\nUser: ${pushName} (${senderNumber})\nTier: ${tier.name}\nSite: ${result.siteUrl}\nCharged: ${fmtNGN(tier.price)}`
     );
 
+    await postToChannel(`🌐 *NEW WEBSITE LIVE* 🌐\n\n${pushName} just launched: ${result.siteUrl}\n\nBuild yours: ${PREFIX}web\n\nJoin: ${CHANNEL_LINK}`);
+
     return reply(panel('Site Live',
       `*${tier.name}* deployment complete.\n\n` +
       `Live URL:\n${result.siteUrl}\n\n` +
       `Repository:\n${result.repoUrl}\n\n` +
       `Charged: *${fmtNGN(tier.price)}*\nNew balance: *${fmtNGN(newBal)}*\n` +
       `Order: *${orderId}*\n\n` +
-      `_GitHub Pages may take 30–90 seconds to fully publish. Reload the URL if it's not live yet._`));
+      `_ GitHub Pages may take 30–90 seconds to fully publish. Reload the URL if it's not live yet._`));
   } catch (err) {
     log.error('Web deploy crash:', err?.message || err);
     updateBalance(senderNumber, tier.price);
@@ -592,7 +781,7 @@ async function cmdWeb(reply, notifyOwner, user, senderNumber, pushName, args) {
 }
 
 // ──.buy airtime / data ─────────────────────────────────────────────────────
-async function cmdBuy(reply, notifyOwner, user, senderNumber, pushName, args) {
+async function cmdBuy(reply, notifyOwner, postToChannel, user, senderNumber, pushName, args) {
   const sub = (args.shift() || '').toLowerCase();
 
   if (sub === 'airtime') {
@@ -620,13 +809,14 @@ async function cmdBuy(reply, notifyOwner, user, senderNumber, pushName, args) {
       amount, status: 'PROCESSING', meta: { number, amount },
     });
     await notifyOwner(`New airtime order\nUser: ${pushName} (${senderNumber})\nAmount: ${fmtNGN(amount)}\nNumber: ${number}\nOrder: ${orderId}`);
+    await postToChannel(`💳 *AIRTIME TOPUP* 💳\n\n${pushName} just bought ${fmtNGN(amount)} airtime!\n\nTop up yours: ${PREFIX}buy airtime`);
     return reply(panel('Airtime Order',
       `Amount: *${fmtNGN(amount)}*\nNumber: *${number}*\nCharged: *${fmtNGN(amount)}*\nNew balance: *${fmtNGN(newBal)}*\n\nOrder *${orderId}* is processing — usually within minutes.`));
   }
 
   if (sub === 'data') {
     if (args.length < 2) {
-      return reply(panel('Data', `Usage: ${PREFIX}buy data [plan] [number]\nExample: ${PREFIX}buy data MTN-2GB 08163738389\nSee plans: ${PREFIX}services data`));
+      return reply(panel('Data', `Usage: ${PREFIX}buy data [number]\nExample: ${PREFIX}buy data MTN-2GB 08163738389\nSee plans: ${PREFIX}services data`));
     }
     const planCode = (args[0] || '').toUpperCase();
     const number = (args[1] || '').replace(/[^0-9]/g, '');
@@ -648,16 +838,17 @@ async function cmdBuy(reply, notifyOwner, user, senderNumber, pushName, args) {
       amount: plan.price, status: 'PROCESSING', meta: { plan: planCode, number },
     });
     await notifyOwner(`New data order\nUser: ${pushName} (${senderNumber})\nPlan: ${planCode} (${plan.name})\nNumber: ${number}\nCharged: ${fmtNGN(plan.price)}\nOrder: ${orderId}`);
+    await postToChannel(`📶 *DATA PURCHASE* 📶\n\n${pushName} bought ${plan.name}!\n\nGet yours: ${PREFIX}buy data`);
     return reply(panel('Data Order',
       `Plan: *${planCode}* (${plan.name})\nNetwork: *${plan.network}*\nNumber: *${number}*\nCharged: *${fmtNGN(plan.price)}*\nNew balance: *${fmtNGN(newBal)}*\n\nOrder *${orderId}* is processing — usually within minutes.`));
   }
 
   return reply(panel('Buy',
-    `Usage:\n${PREFIX}buy airtime [amount] [number]\n${PREFIX}buy data [plan] [number]\n\nSee ${PREFIX}services airtime / ${PREFIX}services data`));
+    `Usage:\n${PREFIX}buy airtime [amount] [number]\n${PREFIX}buy data [number]\n\nSee ${PREFIX}services airtime / ${PREFIX}services data`));
 }
 
 // ──.biz [code] ─────────────────────────────────────────────────────────────
-async function cmdBiz(reply, notifyOwner, user, senderNumber, pushName, args) {
+async function cmdBiz(reply, notifyOwner, postToChannel, user, senderNumber, pushName, args) {
   const code = (args[0] || '').toUpperCase();
   const svc = BIZ_SERVICES[code];
   if (!svc) {
@@ -675,6 +866,7 @@ async function cmdBiz(reply, notifyOwner, user, senderNumber, pushName, args) {
     summary: svc.name, amount: svc.price, status: 'PENDING', meta: { code },
   });
   await notifyOwner(`New business order\nUser: ${pushName} (${senderNumber})\nService: ${svc.name}\nCharged: ${fmtNGN(svc.price)}\nOrder: ${orderId}`);
+  await postToChannel(`💼 *BUSINESS ORDER* 💼\n\n${pushName} ordered ${svc.name}!\n\nStart yours: ${PREFIX}biz`);
   return reply(panel('Order Received',
     `Service: *${svc.name}*\nCharged: *${fmtNGN(svc.price)}*\nNew balance: *${fmtNGN(newBal)}*\n\nOrder *${orderId}* received. A Harps Tech specialist will contact you within 24 hours to begin work.`));
 }
@@ -692,7 +884,278 @@ async function cmdAi(reply, user, senderNumber, pushName, args) {
     `${answer}\n\n_Charged ${fmtNGN(AI_COST)} • Balance: ${fmtNGN(newBal)}_`));
 }
 
-// ── ADMIN:.fund /.users /.broadcast /.smmbal /.smmlist ─────────────────
+// ── BOT SELLING ─────────────────────────────────────────────────────────────
+async function cmdBuyBot(reply, notifyOwner, user, senderNumber, pushName, args) {
+  const type = (args[0] || '').toLowerCase();
+  const bot = BOT_PACKAGES[type];
+  if (!bot) {
+    return reply(panel('Bot Packages', `Usage: ${PREFIX}buybot [basic/standard/pro/premium]\n\nSee ${PREFIX}services bots`));
+  }
+  if (user.balance < bot.price) {
+    await reply(INSUFFICIENT_MSG);
+    return reply(panel('Bot Purchase', `${bot.name} costs ${fmtNGN(bot.price)}.\nYour balance: ${fmtNGN(user.balance)}.`));
+  }
+  updateBalance(senderNumber, -bot.price);
+  const orderId = genOrderId('BOT');
+  const newBal = updateBalance(senderNumber, 0);
+  recordOrder({
+    id: orderId, user: senderNumber, type: 'BOT',
+    summary: `${bot.name} Package`, amount: bot.price, status: 'PENDING', meta: { type },
+  });
+  await notifyOwner(`NEW BOT SALE!\nUser: ${pushName} (${senderNumber})\nPackage: ${bot.name}\nPaid: ${fmtNGN(bot.price)}\nOrder: ${orderId}\n\nSend bot files to customer!`);
+  return reply(panel('Bot Purchase Success',
+    `Package: *${bot.name}*\nPrice: *${fmtNGN(bot.price)}*\nFeatures: *${bot.features}*\nNew balance: *${fmtNGN(newBal)}*\n\nOrder *${orderId}* confirmed!\n\nA Harps Tech agent will contact you within 1 hour to deliver your bot files + setup guide.`));
+}
+
+async function cmdDemo(reply, notifyOwner, user, senderNumber, pushName) {
+  const db = loadDB();
+  if (db.demos[senderNumber]) {
+    return reply(panel('Demo Active', `You already have an active demo!\nExpires: ${new Date(db.demos[senderNumber]).toLocaleString()}\n\nContact ${SUPPORT_HANDLE} to upgrade.`));
+  }
+  const expiry = new Date(Date.now() + 24*60*60*1000);
+  db.demos[senderNumber] = expiry.toISOString();
+  saveDB(db);
+  await notifyOwner(`DEMO REQUEST\nUser: ${pushName} (${senderNumber})\nExpires: ${expiry.toLocaleString()}\n\nSend demo bot to customer!`);
+  return reply(panel('Demo Activated',
+    `✅ 24hr Demo Bot Activated!\n\nExpires: ${expiry.toLocaleString()}\n\nFeatures: Menu, Balance, AI, Basic commands\n\nA demo bot will be sent to you shortly.\n\nUpgrade anytime: ${PREFIX}buybot`));
+}
+
+// ── NUMBER SHOP ─────────────────────────────────────────────────────────────
+async function cmdBuyNumber(reply, notifyOwner, postToChannel, user, senderNumber, pushName) {
+  const COST = 4000;
+  if (user.balance < COST) {
+    await reply(INSUFFICIENT_MSG);
+    return reply(panel('USA Number', `USA WhatsApp Number costs *${fmtNGN(COST)}*.\nYour balance: *${fmtNGN(user.balance)}*.`));
+  }
+  if (!process.env.FIVESIM_API_KEY) {
+    return reply(panel('USA Number', 'Number service temporarily unavailable. Contact support.'));
+  }
+
+  updateBalance(senderNumber, -COST);
+  await reply(panel('Buying Number', 'Purchasing USA WhatsApp number from 5SIM...\nPlease wait 10-30 seconds.'));
+
+  try {
+    const numData = await get5SimNumber('usa', 'whatsapp');
+    if (!numData ||!numData.phone) {
+      updateBalance(senderNumber, COST);
+      return reply(panel('USA Number', 'Failed to get number from 5SIM. Refunded ₦4,000.\nTry again or contact support.'));
+    }
+
+    const orderId = genOrderId('NUM');
+    const newBal = updateBalance(senderNumber, 0);
+    recordOrder({
+      id: orderId, user: senderNumber, type: 'NUMBER',
+      summary: `USA WhatsApp ${numData.phone}`, amount: COST, status: 'WAITING_SMS', meta: { phone: numData.phone, id: numData.id },
+    });
+
+    await notifyOwner(`NUMBER SOLD\nUser: ${pushName} (${senderNumber})\nNumber: ${numData.phone}\nCharged: ₦4,000\nOrder: ${orderId}`);
+    await postToChannel(`📱 *NUMBER SOLD* 📱\n\n${pushName} bought USA WhatsApp number!\n\nGet yours: ${PREFIX}buynumber ₦4k`);
+
+    await reply(panel('Number Purchased',
+      `Phone: *${numData.phone}*\nCountry: USA\nService: WhatsApp\nCharged: *₦4,000*\nBalance: *${fmtNGN(newBal)}*\n\n` +
+      `Order: *${orderId}*\n\nNow go to WhatsApp → Enter this number → Request SMS code\n\nI'll auto-send you the code when it arrives!`));
+
+    // Auto-check SMS every 10 seconds for 5 minutes
+    let attempts = 0;
+    const maxAttempts = 30;
+    const checkSMS = async () => {
+      attempts++;
+      const sms = await get5SimSms(numData.id);
+      if (sms && sms.sms && sms.sms.length > 0) {
+        const code = sms.sms[0].code;
+        await reply(panel('SMS CODE RECEIVED',
+          `Phone: *${numData.phone}*\n\n*WhatsApp Code: ${code}*\n\nEnter this code in WhatsApp now!\n\nNote: Number works for WhatsApp only. No guarantee after code delivered.`));
+        return;
+      }
+      if (attempts < maxAttempts) {
+        setTimeout(checkSMS, 10000);
+      } else {
+        await reply(panel('SMS Timeout', `No SMS received after 5 minutes.\n\nContact ${SUPPORT_HANDLE} with Order ID: ${orderId}`));
+      }
+    };
+    setTimeout(checkSMS, 10000);
+
+  } catch (err) {
+    log.error('5SIM error:', err.message);
+    updateBalance(senderNumber, COST);
+    return reply(panel('USA Number', `Error buying number: ${err.message}\n\nRefunded ₦4,000. Try again later.`));
+  }
+}
+
+// ── CRUISE COMMANDS ─────────────────────────────────────────────────────────
+function cmdChill(reply, user, senderNumber, pushName) {
+  const db = loadDB();
+  db.users[senderNumber].chillMode = true;
+  saveDB(db);
+  const responses = [
+    `Omo *${pushName}* 😂 I don switch to chill mode. No more business talk. Wetin dey sup?`,
+    `Guyyyyy *${pushName}* 😎 Friend mode activated. How you dey?`,
+    `My gee *${pushName}* 💯 No more bot vibes. Just me and you. Wetin happen?`,
+    `Baba *${pushName}* 😂 I don drop customer service. Now na gist. How far?`
+  ];
+  const pick = responses[Math.floor(Math.random() * responses.length)];
+  return reply(pick + `\n\n_Type.nochill to go back business mode_`);
+}
+
+function cmdNoChill(reply, user, senderNumber) {
+  const db = loadDB();
+  db.users[senderNumber].chillMode = false;
+  saveDB(db);
+  return reply(panel('Business Mode ON', `✅ Back to HARPS TECH Bot\n\nSend.menu to see services\nSend.pay to fund wallet\n\n_${BRAND_TAGLINE}_`));
+}
+
+function cmdSavage(reply) {
+  const savage = SAVAGE_REPLIES[Math.floor(Math.random() * SAVAGE_REPLIES.length)];
+  return reply(panel('Savage Mode 😏', savage));
+}
+
+function cmdJokes(reply) {
+  const joke = JOKES[Math.floor(Math.random() * JOKES.length)];
+  return reply(panel('Joke Time 😂', joke));
+}
+
+async function cmdMeme(reply, user, senderNumber, args) {
+  const text = args.join(' ').trim();
+  if (!text) return reply(panel('Meme Generator', `Usage: ${PREFIX}meme [text]\nExample: ${PREFIX}meme When NEPA take light`));
+  if (user.balance < 20) return reply(panel('Meme Generator', 'Cost: ₦20\nYour balance: ' + fmtNGN(user.balance)));
+  updateBalance(senderNumber, -20);
+  const meme = await askGemini(`Create a funny Nigerian meme caption for: "${text}". Make it short, savage, relatable.`);
+  return reply(panel('Meme Generated 😂', `${meme}\n\n_Charged ₦20_`));
+}
+
+function cmdShip(reply, args) {
+  if (args.length < 2) return reply(panel('Ship Calculator', `Usage: ${PREFIX}ship @user1 @user2`));
+  const love = Math.floor(Math.random() * 100) + 1;
+  const u1 = args[0].replace('@', '');
+  const u2 = args[1].replace('@', '');
+  let msg = `${u1} ❤️ ${u2} = ${love}%\n\n`;
+  if (love > 80) msg += 'Soulmates! 💍 Marry now!';
+  else if (love > 60) msg += 'Strong connection! 🔥';
+  else if (love > 40) msg += 'E fit work. Try am 😏';
+  else msg += 'Omo... na friend zone 📦';
+  return reply(panel('Love Calculator', msg));
+}
+
+function cmdTruth(reply, args) {
+  const type = (args[0] || 'truth').toLowerCase();
+  const truths = ["What's your biggest secret?", "Who be your crush?", "You don ever lie for this group?", "Wetin you dey hide for your phone?"];
+  const dares = ["Send voice note sing 'God is Good'", "Change your DP to potato for 1hr", "Send ₦100 to admin 😂", "Call your ex right now 📞"];
+  const pick = type === 'dare'? dares[Math.floor(Math.random() * dares.length)] : truths[Math.floor(Math.random() * truths.length)];
+  return reply(panel(type === 'dare'? 'DARE 🔥' : 'TRUTH 🤔', pick));
+}
+
+async function cmdQuiz(reply, from, sock) {
+  const questions = [
+    { q: "What is Nigeria capital?", a: "abuja" },
+    { q: "2 + 2 x 2 =?", a: "6" },
+    { q: "Who founded HARPS TECH?", a: "okugbe praise" },
+    { q: "Which year Nigeria gain independence?", a: "1960" }
+  ];
+  const q = questions[Math.floor(Math.random() * questions.length)];
+  await reply(panel('QUIZ TIME 🧠', `${q.q}\n\nReply with answer in 30 seconds!\nFirst correct answer wins ₦50!`));
+}
+
+function cmdRPS(reply, args) {
+  const user = (args[0] || '').toLowerCase();
+  const choices = ['rock', 'paper', 'scissors'];
+  if (!choices.includes(user)) return reply(panel('RPS Game', `Usage: ${PREFIX}rps [rock/paper/scissors]`));
+  const bot = choices[Math.floor(Math.random() * 3)];
+  let result = '';
+  if (user === bot) result = 'Draw! 😐';
+  else if ((user === 'rock' && bot === 'scissors') || (user === 'paper' && bot === 'rock') || (user === 'scissors' && bot === 'paper')) result = 'You win! 🎉 +₦20';
+  else result = 'Bot wins! 🤖';
+  return reply(panel('Rock Paper Scissors', `You: ${user}\nBot: ${bot}\n\n${result}`));
+}
+
+// ── GROUP CONTROL ───────────────────────────────────────────────────────────
+function cmdGroupOn(reply, from, senderNumber) {
+  if (senderNumber!== OWNER_NUMBER) return reply('❌ Only owner can turn on bot.');
+  setGroupSettings(from, { enabled: true });
+  return reply(panel('Bot Activated', '✅ Bot is now ON in this group\n\nAll commands active for everybody!\n\nType.off to deactivate me.'));
+}
+
+function cmdGroupOff(reply, from, senderNumber) {
+  if (senderNumber!== OWNER_NUMBER) return reply('❌ Only owner can turn off bot.');
+  setGroupSettings(from, { enabled: false });
+  return reply(panel('Bot Deactivated', '❌ Bot is now OFF in this group\n\nI no go reply anybody again.\n\nOnly owner commands work.\n\nType.on to activate me back.'));
+}
+
+function cmdGroupToggle(reply, from, senderNumber, args) {
+  if (senderNumber!== OWNER_NUMBER) return reply('❌ Only owner can use this.');
+  const mode = (args[0] || '').toLowerCase();
+  if (mode === 'on') {
+    setGroupSettings(from, { enabled: true });
+    return reply(panel('Group Mode', '✅ Bot enabled for everyone'));
+  } else if (mode === 'off') {
+    setGroupSettings(from, { enabled: false });
+    return reply(panel('Group Mode', '❌ Bot disabled for members'));
+  }
+  return reply(panel('Group Mode', `Usage: ${PREFIX}group [on/off]`));
+}
+
+// ── GROWTH TRIALS ───────────────────────────────────────────────────────────
+function cmdGrowth(reply) {
+  const body = Object.entries(GROWTH_TRIALS)
+.map(([key, t]) => `*${t.name}* - ${fmtNGN(t.price)}\nCommand: ${PREFIX}smm ${t.service} [link] ${t.qty}`)
+.join('\n\n') +
+    `\n\n*Example:* ${PREFIX}smm IGF https://instagram.com/yourhandle 10`;
+  return reply(panel('Growth Trials 🔥', body));
+}
+
+// ── DAILY BONUS ─────────────────────────────────────────────────────────────
+function cmdDaily(reply, user, senderNumber) {
+  const db = loadDB();
+  const today = new Date().toDateString();
+  const lastClaim = db.users[senderNumber].daily? new Date(db.users[senderNumber].daily).toDateString() : null;
+
+  if (lastClaim === today) {
+    return reply(panel('Daily Bonus', '❌ You already claimed today!\n\nCome back tomorrow for ₦100 free.'));
+  }
+
+  updateBalance(senderNumber, 100);
+  db.users[senderNumber].daily = new Date().toISOString();
+  saveDB(db);
+
+  return reply(panel('Daily Bonus Claimed! 🎉', `+₦100 added to your balance!\n\nNew balance: ${fmtNGN(user.balance + 100)}\n\nCome back tomorrow!`));
+}
+
+// ── VOICE CLONE ─────────────────────────────────────────────────────────────
+async function cmdSetVoice(reply, sock, msg, senderNumber) {
+  if (senderNumber!== OWNER_NUMBER) return reply('❌ Only owner can set voice.');
+
+  if (!msg.message?.audioMessage) {
+    return reply(panel('Set Voice Clone', '❌ Send voice note + caption.setvoice\n\nExample: Record 10sec voice saying "Hello I be HARPS TECH" then caption.setvoice'));
+  }
+
+  await reply(panel('Voice Clone', '⏳ Processing your voice... This take 30sec'));
+
+  const buffer = await downloadMediaMessage(msg, 'buffer', {});
+  const db = loadDB();
+  db.voiceClone = buffer.toString('base64');
+  saveDB(db);
+
+  return reply(panel('Voice Clone Success', '✅ Your voice saved!\n\nNow when you use.ai or.voice, bot go reply with YOUR voice.\n\nTest:.voice Hello customers'));
+}
+
+async function cmdVoiceClone(reply, sock, msg, from, user, senderNumber, args) {
+  const text = args.join(' ').trim();
+  if (!text) return reply(panel('Voice Clone', `Usage: ${PREFIX}voice [text]\nExample: ${PREFIX}voice Hello customers, HARPS TECH here`));
+
+  const db = loadDB();
+  if (!db.voiceClone) {
+    return reply(panel('Voice Clone', '❌ Owner never set voice yet.\n\nOwner should send voice note + caption.setvoice'));
+  }
+
+  if (user.balance < 100) return reply(panel('Voice Clone', 'Cost: ₦100\nYour balance: ' + fmtNGN(user.balance)));
+  updateBalance(senderNumber, -100);
+
+  await reply(panel('Voice Clone', `🎙️ Sending voice note...\n\nText: "${text}"\n\n_Charged ₦100_`));
+
+  const audioBuffer = Buffer.from(db.voiceClone, 'base64');
+  await sock.sendMessage(from, { audio: audioBuffer, mimetype: 'audio/ogg; codecs=opus', ptt: true }, { quoted: msg });
+}
+
+// ── ADMIN COMMANDS ──────────────────────────────────────────────────────────
 async function cmdFund(reply, sock, senderNumber, args) {
   if (senderNumber!== OWNER_NUMBER) {
     return reply('Access denied. Only the bot owner can use this command.');
@@ -784,6 +1247,7 @@ function cmdPanic(reply, senderNumber) {
     `Memory: ${(process.memoryUsage().heapUsed / 1024 / 1024).toFixed(1)} MB\n` +
     `GitHub token: ${process.env.GITHUB_TOKEN? 'OK' : 'MISSING'}\n` +
     `SMM key: ${process.env.SMM_KEY? 'OK' : 'MISSING'}\n` +
+    `5SIM key: ${process.env.FIVESIM_API_KEY? 'OK' : 'MISSING'}\n` +
     `Gemini: ${process.env.AI_INTEGRATIONS_GEMINI_API_KEY? 'OK' : 'MISSING'}`));
 }
 
@@ -812,42 +1276,43 @@ async function startBot() {
   });
 
   sock.ev.on('connection.update', async (update) => {
-  const { connection, lastDisconnect } = update;
+    const { connection, lastDisconnect } = update;
 
-  // BROKEN CAMERA CEO INSTANT CODE
-  if (connection === 'connecting' &&!sock.authState.creds.registered) {
-    console.log('!!! GENERATING CODE FOR iPHONE 8 CEO!!!');
-    try {
-      await new Promise(r => setTimeout(r, 1000));
-      const code = await sock.requestPairingCode(PHONE_NUMBER);
-      console.log('\n========================================');
-      console.log(' 🔥 BROKEN CAMERA CEO CODE 🔥');
-      console.log('========================================');
-      console.log(` CODE: ${code}`);
-      console.log(` FOR: +${PHONE_NUMBER}`);
-      console.log('========================================');
-      console.log(' TYPE THIS IN WHATSAPP NOW - 60 SECS');
-      console.log('========================================\n');
-    } catch (err) {
-      console.log('Code error:', err.message);
+    // BROKEN CAMERA CEO INSTANT CODE
+    if (connection === 'connecting' &&!sock.authState.creds.registered) {
+      console.log('!!! GENERATING CODE FOR iPHONE 8 CEO!!!');
+      try {
+        await new Promise(r => setTimeout(r, 1000));
+        const code = await sock.requestPairingCode(PHONE_NUMBER);
+        console.log('\n========================================');
+        console.log(' 🔥 BROKEN CAMERA CEO CODE 🔥');
+        console.log('========================================');
+        console.log(` CODE: ${code}`);
+        console.log(` FOR: +${PHONE_NUMBER}`);
+        console.log('========================================');
+        console.log(' TYPE THIS IN WHATSAPP NOW - 60 SECS');
+        console.log('========================================\n');
+      } catch (err) {
+        console.log('Code error:', err.message);
+      }
     }
-  }
 
-  if (connection === 'open') {
-    log.success(`${BOT_NAME} connected as ${sock.user?.id || 'unknown'}`);
-  } else if (connection === 'close') {
-    const statusCode = lastDisconnect?.error?.output?.statusCode || lastDisconnect?.error?.output?.payload?.statusCode;
-    const shouldReconnect = statusCode!== DisconnectReason.loggedOut;
-    log.warn(`Connection closed (${statusCode}). Reconnecting: ${shouldReconnect}`);
-    if (shouldReconnect) {
-      setTimeout(() => {
-        startBot().catch((e) => log.error('Restart failed:', e?.message || e));
-      }, 3000);
-    } else {
-      log.error('Logged out. Delete the auth folder and restart to re-pair.');
+    if (connection === 'open') {
+      log.success(`${BOT_NAME} connected as ${sock.user?.id || 'unknown'}`);
+    } else if (connection === 'close') {
+      const statusCode = lastDisconnect?.error?.output?.statusCode || lastDisconnect?.error?.output?.payload?.statusCode;
+      const shouldReconnect = statusCode!== DisconnectReason.loggedOut;
+      log.warn(`Connection closed (${statusCode}). Reconnecting: ${shouldReconnect}`);
+      if (shouldReconnect) {
+        setTimeout(() => {
+          startBot().catch((e) => log.error('Restart failed:', e?.message || e));
+        }, 3000);
+      } else {
+        log.error('Logged out. Delete the auth folder and restart to re-pair.');
+      }
     }
-  }
-});
+  });
+
   sock.ev.on('creds.update', saveCreds);
 
   sock.ev.on('messages.upsert', async ({ messages, type }) => {
@@ -865,6 +1330,8 @@ async function startBot() {
         const isGroup = from.endsWith('@g.us');
         const isPrivate =!isGroup;
         const pushName = msg.pushName || 'there';
+        const senderJid = msg.key.participant || msg.key.remoteJid;
+        const senderNumber = senderJid.split('@')[0].split(':')[0];
 
         // 1. Handle voice notes / images / stickers — FREE
         if (msg.message.audioMessage || msg.message.imageMessage || msg.message.stickerMessage || msg.message.videoMessage) {
@@ -879,21 +1346,61 @@ async function startBot() {
         // 2. If no text, stop here
         if (!text) continue;
 
+        // AUTO-SAVAGE - Check if message contains curse
+        if (text && isCursed(text) &&!text.startsWith(PREFIX)) {
+          const groupSet = isGroup? getGroupSettings(from) : { enabled: true };
+          if (groupSet.enabled) {
+            await autoSavage(sock, msg, from, pushName);
+            continue;
+          }
+        }
+
         // 3. Handle PAID commands first
         if (text.startsWith(PREFIX)) {
           await handleCommand(sock, msg, text);
           continue;
         }
 
-        // 4. Auto-reply in PRIVATE chats only — FREE
+        // 4. Auto-reply in PRIVATE chats only — CHECK CHILL MODE
         if (isPrivate) {
+          const db = loadDB();
+          const isChillMode = db.users[senderNumber]?.chillMode || false;
+
+          if (isChillMode) {
+            // CHILL MODE = Normal person replies
+            const lowerText = text.toLowerCase().trim();
+            let reply = '';
+
+            if (lowerText.includes('how far') || lowerText.includes('sup')) {
+              reply = `I dey o *${pushName}* 😂 You sef how far? Wetin dey happen?`;
+            } else if (lowerText.includes('wetin') || lowerText.includes('what')) {
+              reply = `Nothing much o *${pushName}* 😎 Just dey observe life. You?`;
+            } else if (lowerText.includes('money') || lowerText.includes('broke')) {
+              reply = `Omo money matter 😂 We go hustle am. God dey. You get update?`;
+            } else if (lowerText.includes('love') || lowerText.includes('babe')) {
+              reply = `Ahn ahn *${pushName}* 😂 Love don hold you? Talk to me`;
+            } else {
+              const chillReplies = [
+                `Lmao *${pushName}* 😂 You funny o`,
+                `Na so *${pushName}* 😎 I hear you`,
+                `True talk *${pushName}* 💯`,
+                `Omo e don be for you 😂 Wetin next?`
+              ];
+              reply = chillReplies[Math.floor(Math.random() * chillReplies.length)];
+            }
+
+            await sock.sendMessage(from, { text: reply }, { quoted: msg });
+            continue;
+          }
+
+          // NORMAL BUSINESS MODE BELOW
           const lowerText = text.toLowerCase().trim();
 
           // Pidgin detector
-          const pidginWords = ['watin', 'dey', 'how far', 'abeg', 'omo', 'na you dey', 'ehn', 'wahala', 'shey'];
+          const pidginWords = ['watin', 'dey', 'how far', 'abeg', 'omo', 'na you dey', 'ehn', 'wahala', 'shey', 'na', 'oya'];
           if (pidginWords.some(w => lowerText.includes(w))) {
             await sock.sendMessage(from, {
-              text: panel('HARPS TECH Bot', `Omo *${pushName}* 👋 You don show!\n\nI be *HARPS TECH Bot* — I dey run business 24/7\n\n*Sharp sharp:*\n• Send *.menu* — See all wey I fit do\n• Send *.ai* + your question — AI go answer ₦50\n• Send *.pay* — Fund wallet to buy\n\nNo dull yourself 👇 Type *.menu*\n\n_${BRAND_TAGLINE}_`)
+              text: panel('HARPS TECH Bot', `Omo *${pushName}* 👋 You don show!\n\nI be *HARPS TECH Bot* — I dey run business 24/7\n\n*Sharp sharp:*\n• Send *.menu* — See all wey I fit do\n• Send *.ai* + your question — AI go answer ₦50\n• Send *.pay* — Fund wallet to buy\n• Send *.chill* — Gist mode\n\nNo dull yourself 👇 Type *.menu*\n\n_${BRAND_TAGLINE}_`)
             }, { quoted: msg });
             continue;
           }
@@ -902,16 +1409,35 @@ async function startBot() {
           const greetings = ['hey', 'hi', 'hello', 'sup', 'yo', 'good morning', 'good afternoon', 'good evening', 'gm', 'gn'];
           if (greetings.some(g => lowerText.startsWith(g))) {
             await sock.sendMessage(from, {
-              text: panel('Welcome to Harps Tech', `Hello *${pushName}* 👋\n\nI'm *HARPS TECH Bot* — your 24/7 business assistant.\n\n*Quick Start:*\n• Send *.menu* — see all services\n• Send *.ai how to make money* — chat with AI ₦50\n• Send *.balance* — check wallet\n\n_${BRAND_TAGLINE}_`)
+              text: panel('Welcome to Harps Tech', `Hello *${pushName}* 👋\n\nI'm *HARPS TECH Bot* — your 24/7 business assistant.\n\n*Quick Start:*\n• Send *.menu* — see all services\n• Send *.ai how to make money* — chat with AI ₦50\n• Send *.balance* — check wallet\n• Send *.chill* — Friend mode\n\n_${BRAND_TAGLINE}_`)
             }, { quoted: msg });
             continue;
           }
 
           // Default reply for any other random text
           await sock.sendMessage(from, {
-            text: panel('HARPS TECH Bot', `Hi *${pushName}* 👋\n\nDid you need help?\n\n*Popular commands:*\n• *.menu* — Full service list\n• *.services* — Business catalog \n• *.ai* + question — AI chat ₦50\n• *.pay* — Fund your wallet\n\nType *.menu* to start 👇\n\n_${BRAND_TAGLINE}_`)
+            text: panel('HARPS TECH Bot', `Hi *${pushName}* 👋\n\nDid you need help?\n\n*Popular commands:*\n• *.menu* — Full service list\n• *.services* — Business catalog \n• *.ai* + question — AI chat ₦50\n• *.pay* — Fund your wallet\n• *.chill* — Gist with me\n\nType *.menu* to start 👇\n\n_${BRAND_TAGLINE}_`)
           }, { quoted: msg });
           continue;
+        }
+
+        // 5. GROUP CHAT - Check if bot enabled
+        if (isGroup) {
+          const groupSet = getGroupSettings(from);
+          if (!groupSet.enabled) continue; // Bot OFF, ignore
+
+          // Cruise mode - auto reply to mentions
+          if (groupSet.cruise && (text.toLowerCase().includes('harps') || text.toLowerCase().includes('bot'))) {
+            const responses = [
+              `Na who mention HARPS TECH? 😏 Money dey?`,
+              `Yes boss *${pushName}* 😂 Wetin you want buy?`,
+              `I dey here o. Type.menu to see services 💰`,
+              `No disturb me unless na business 📈`
+            ];
+            await sock.sendMessage(from, {
+              text: responses[Math.floor(Math.random() * responses.length)]
+            }, { quoted: msg });
+          }
         }
 
         const senderJid = msg.key.participant || msg.key.remoteJid;
