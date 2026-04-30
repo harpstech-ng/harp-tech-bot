@@ -1440,8 +1440,7 @@ async function startBot() {
           }
         }
 
-        const senderJid = msg.key.participant || msg.key.remoteJid;
-        const senderNumber = senderJid.split('@')[0].split(':')[0];
+      
         getUser(`${senderJid.split('@')[0]}@s.whatsapp.net`, msg.pushName || senderNumber);
 
       } catch (err) {
