@@ -6,7 +6,7 @@
     "start": "node index.js"
   },
   "dependencies": {
-    "@whiskeysockets/baileys": "latest",
+    "@whiskeysockets/baileys": "6.6.0",
     "@google/genai": "^0.14.0",
     "axios": "^1.7.2",
     "express": "^4.19.2",
