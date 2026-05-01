@@ -1175,39 +1175,42 @@ async function startBot() {
 
       const generateCode = async () => {
         try {
-          // iPhone 8 fix: 5 sec delay before requesting code
-          await new Promise(r => setTimeout(r, 5000));
-          
+          // === LATEST + 60 SEC DELAY - THE ONE THAT WORKED BEFORE ===
+    if (connection === 'connecting' &&!sock.authState.creds.registered) {
+      console.log('!!! HARPS TECH LATEST MODE!!!');
+      console.log(' Waiting 60 seconds for WhatsApp server...');
+      
+      // Auto delete auth to fix "Couldn't link device"
+      if (fs.existsSync(AUTH_FOLDER)) {
+        fs.rmSync(AUTH_FOLDER, { recursive: true, force: true });
+        console.log('[CLEANUP] Old auth deleted');
+      }
+      
+      setTimeout(async () => {
+        try {
           const code = await sock.requestPairingCode(PHONE_NUMBER);
-          const time = new Date().toLocaleTimeString();
-
           console.log('\n');
           console.log('═══════════════════════════════════════════');
-          console.log(` 🔥 iPHONE 8 CODE - ${time} 🔥`);
+          console.log(` 🔥🔥 LATEST CODE: ${code} 🔥🔥`);
           console.log('═══════════════════════════════════════════');
-          console.log(`           ${code}           `);
-          console.log('    20 SECOND WINDOW - ENTER NOW');
-          console.log('═══════════════════════════════════════════');
+          console.log(' ⚠️  YOU GET 8-10 SECONDS ONLY - BE FAST');
           console.log(' 📱 WhatsApp → Settings → Linked Devices');
           console.log('    Link with Phone Number → +234 814 161 2736');
           console.log('═══════════════════════════════════════════');
           console.log('\n');
-
+          
         } catch (err) {
-          console.log('Code error:', err.message);
-          if (err.message.includes('401')) {
-            console.log('[FIX] Auth error. Restarting...');
-            setTimeout(() => process.exit(1), 3000);
-          }
+          console.log('[ERROR] Pairing failed:', err.message);
+          console.log('[AUTO-FIX] Restarting in 3 seconds...');
+          setTimeout(() => process.exit(1), 3000);
+        }
+      }, 60000); // 60 SECOND DELAY - THIS IS THE KEY
+    }
         }
       };
 
-      await generateCode();
-      const codeInterval = setInterval(generateCode, 20000); // New code every 20 sec
-
       sock.ev.on('connection.update', (u) => {
         if (u.connection === 'open') {
-          clearInterval(codeInterval);
           console.log('\n🎉🎉 iPHONE 8 LINKED SUCCESSFULLY 🎉🎉🎉\n');
         }
       });
