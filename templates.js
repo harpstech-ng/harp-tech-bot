@@ -3,7 +3,7 @@ const fs = require('fs');
 function generateSiteHTML(tier, sitename) {
   const config = JSON.parse(fs.readFileSync('./web_config.json', 'utf-8'));
   const tierData = config.tiers[tier];
-  
+
   if (!tierData) return '<h1>Error: Invalid tier</h1>';
 
   const baseHTML = `
@@ -16,18 +16,18 @@ function generateSiteHTML(tier, sitename) {
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; }
-   .hero { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 100px 20px; text-align: center; }
-   .hero h1 { font-size: 3rem; margin-bottom: 20px; }
-   .hero p { font-size: 1.2rem; margin-bottom: 30px; }
-   .btn { display: inline-block; padding: 15px 30px; background: #25D366; color: white; text-decoration: none; border-radius: 50px; font-weight: bold; transition: 0.3s; }
-   .btn:hover { transform: scale(1.05); }
-   .container { max-width: 1200px; margin: 0 auto; padding: 60px 20px; }
-   .features { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 30px; margin: 40px 0; }
-   .feature { background: #f8f9fa; padding: 30px; border-radius: 10px; text-align: center; }
-   .feature h3 { color: #667eea; margin-bottom: 15px; }
+  .hero { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 100px 20px; text-align: center; }
+  .hero h1 { font-size: 3rem; margin-bottom: 20px; }
+  .hero p { font-size: 1.2rem; margin-bottom: 30px; }
+  .btn { display: inline-block; padding: 15px 30px; background: #25D366; color: white; text-decoration: none; border-radius: 50px; font-weight: bold; transition: 0.3s; }
+  .btn:hover { transform: scale(1.05); }
+  .container { max-width: 1200px; margin: 0 auto; padding: 60px 20px; }
+  .features { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 30px; margin: 40px 0; }
+  .feature { background: #f8f9fa; padding: 30px; border-radius: 10px; text-align: center; }
+  .feature h3 { color: #667eea; margin-bottom: 15px; }
     footer { background: #2c3e50; color: white; text-align: center; padding: 40px 20px; }
-   .badge { position: fixed; bottom: 20px; right: 20px; background: #000; color: #fff; padding: 10px 15px; border-radius: 20px; font-size: 12px; z-index: 999; }
-   .badge a { color: #667eea; text-decoration: none; }
+  .badge { position: fixed; bottom: 20px; right: 20px; background: #000; color: #fff; padding: 10px 15px; border-radius: 20px; font-size: 12px; z-index: 999; }
+  .badge a { color: #667eea; text-decoration: none; }
   </style>
 </head>
 <body>
@@ -77,3 +77,18 @@ function generateSiteHTML(tier, sitename) {
   </div>
 
   <footer>
+    <p>&copy; 2026 ${sitename}. Powered by HARPS TECH</p>
+    <p>Built with ❤️ by Okugbe Praise</p>
+  </footer>
+
+  <div class="badge">
+    Powered by <a href="https://wa.me/2348141612736">HARPS TECH</a>
+  </div>
+</body>
+</html>
+`;
+
+  return baseHTML;
+}
+
+module.exports = { generateSiteHTML };
