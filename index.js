@@ -1186,36 +1186,62 @@ async function startBot() {
   sock.ev.on('connection.update', async (update) => {
     const { connection, lastDisconnect } = update;
 
-    // BROKEN CAMERA CEO INSTANT CODE
+    // === PAIRING CODE WITH AUTO-REFRESH 30 SEC WINDOW ===
     if (connection === 'connecting' &&!sock.authState.creds.registered) {
-      console.log('!!! GENERATING CODE FOR iPHONE 8 CEO!!!');
-      try {
-        await new Promise(r => setTimeout(r, 1000));
-        const code = await sock.requestPairingCode(PHONE_NUMBER);
-        console.log('\n========================================');
-        console.log(' 🔥 BROKEN CAMERA CEO CODE 🔥');
-        console.log('========================================');
-        console.log(` CODE: ${code}`);
-        console.log(` FOR: +${PHONE_NUMBER}`);
-        console.log('========================================');
-        console.log(' TYPE THIS IN WHATSAPP NOW - 60 SECS');
-        console.log('========================================\n');
-      } catch (err) {
-        console.log('Code error:', err.message);
-      }
+      console.log('!!! HARPS TECH PAIRING MODE ACTIVE !!!');
+      
+      const generateCode = async () => {
+        try {
+          await new Promise(r => setTimeout(r, 2000));
+          const code = await sock.requestPairingCode(PHONE_NUMBER);
+          const time = new Date().toLocaleTimeString();
+          
+          console.log('\n');
+          console.log('═══════════════════════════════════════════');
+          console.log(`  🔥 FRESH CODE - ${time} 🔥`);
+          console.log('═══════════════════════════════════════════');
+          console.log(`           CODE: ${code}          `);
+          console.log('   Valid for ~30 seconds from NOW');
+          console.log('═══════════════════════════════════════════');
+          console.log('  📱 WhatsApp → Linked Devices → Link with');
+          console.log('     Phone Number → Enter code FAST');
+          console.log('═══════════════════════════════════════════');
+          console.log('  New code in 25 seconds if you miss this');
+          console.log('═══════════════════════════════════════════');
+          console.log('\n');
+          
+        } catch (err) {
+          console.log('Code error:', err.message);
+        }
+      };
+      
+      await generateCode();
+      const codeInterval = setInterval(generateCode, 25000);
+      
+      sock.ev.on('connection.update', (u) => {
+        if (u.connection === 'open') {
+          clearInterval(codeInterval);
+          console.log('\n🎉🎉🎉 BOT LINKED SUCCESSFULLY 🎉🎉🎉\n');
+        }
+      });
     }
 
     if (connection === 'open') {
       log.success(`${BOT_NAME} connected as ${sock.user?.id || 'unknown'}`);
     } else if (connection === 'close') {
       const statusCode = lastDisconnect?.error?.output?.statusCode || lastDisconnect?.error?.output?.payload?.statusCode;
-      const shouldReconnect = statusCode!== DisconnectReason.loggedOut;
-      log.warn(`Connection closed (${statusCode}). Reconnecting: ${shouldReconnect}`);
-      if (shouldReconnect) {
-        setTimeout(() => {
-          startBot().catch((e) => log.error('Restart failed:', e?.message || e));
-        }, 3000);
-      } else {
+      
+      if (statusCode === DisconnectReason.loggedOut) {
+        console.log('[ERROR] 401 Detected. Auto-deleting auth...');
+        fs.rmSync(AUTH_FOLDER, { recursive: true, force: true });
+        console.log(' Auth cleaned. Restarting for fresh pairing...');
+      }
+      
+      log.warn(`Connection closed (${statusCode}). Reconnecting...`);
+      setTimeout(() => {
+        startBot().catch((e) => log.error('Restart failed:', e?.message || e));
+      }, 3000);
+    } else {
         log.error('Logged out. Delete the auth folder and restart to re-pair.');
       }
     }
