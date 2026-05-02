@@ -1176,22 +1176,23 @@ async function startBot() {
     const { connection, lastDisconnect } = update;
 
     // === INSTANT PAIRING - NO 60 SEC DELAY ===
-    if (connection === 'connecting' && !sock.authState.creds.registered && !global.pairingStarted) {
-    global.pairingStarted = true; // ← This line must be INSIDE the if block
+  if (connection === 'connecting' && !sock.authState.creds.registered && !global.pairingStarted) {
+    global.pairingStarted = true;
     console.log('!!! HARPS TECH INSTANT MODE!!!');
-  
-  try {
-    await new Promise(resolve => setTimeout(resolve, 5000)); 
-    const code = await sock.requestPairingCode(PHONE_NUMBER);
-    console.log('\n');
-    console.log('═══════════════════════════════════════════');
-    console.log(` 🔥🔥 CODE: ${code} 🔥🔥`);
-    console.log('═══════════════════════════════════════════\n');
-  } catch (err) {
-    console.log('[ERROR] Pairing failed:', err.message);
-    global.pairingStarted = false;
+
+    try {
+      // Wait 8 seconds for Baileys to generate keys inside creds.json
+      await new Promise(resolve => setTimeout(resolve, 8000)); 
+      const code = await sock.requestPairingCode(PHONE_NUMBER);
+      console.log('\n');
+      console.log('═══════════════════════════════════════════');
+      console.log(` 🔥🔥 CODE: ${code} 🔥🔥`);
+      console.log('═══════════════════════════════════════════\n');
+    } catch (err) {
+      console.log('[ERROR] Pairing failed:', err.message);
+      global.pairingStarted = false;
+    }
   }
-}
 
     if (connection === 'open') {
       console.log('\n🎉🎉 iPHONE 8 LINKED SUCCESSFULLY 🎉🎉🎉\n');
