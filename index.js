@@ -1176,36 +1176,22 @@ async function startBot() {
     const { connection, lastDisconnect } = update;
 
     // === INSTANT PAIRING - NO 60 SEC DELAY ===
-    if (connection === 'connecting' && !sock.authState.creds.registered) {
-  console.log('!!! HARPS TECH INSTANT MODE!!!');
+    if (connection === 'connecting' && !sock.authState.creds.registered && !global.pairingStarted) {
+    global.pairingStarted = true; // ← This line must be INSIDE the if block
+    console.log('!!! HARPS TECH INSTANT MODE!!!');
   
-  // Delete auth first
-  if (fs.existsSync(AUTH_FOLDER)) {
-    fs.rmSync(AUTH_FOLDER, { recursive: true, force: true });
-    console.log('[CLEANUP] Old auth deleted');
-  }
-  
-  // RECREATE FOLDER + CREDS.JSON AFTER DELETE ↓↓↓
-  fs.mkdirSync(AUTH_FOLDER, { recursive: true });
-  fs.writeFileSync(path.join(AUTH_FOLDER, 'creds.json'), JSON.stringify({}), 'utf8');
-  console.log('[CLEANUP] Fresh auth created');
-  // END FIX ↑↑↑
-
-      try {
-    await new Promise(resolve => setTimeout(resolve, 3000)); // ← ADD 3 SEC DELAY
+  try {
+    await new Promise(resolve => setTimeout(resolve, 5000)); 
     const code = await sock.requestPairingCode(PHONE_NUMBER);
-        console.log('\n');
-        console.log('═══════════════════════════════════════════');
-        console.log(` 🔥🔥 CODE: ${code} 🔥🔥`);
-        console.log('═══════════════════════════════════════════');
-        console.log(' COPY THIS CODE NOW! You get 8 seconds!');
-        console.log('═══════════════════════════════════════════\n');
-        
-      } catch (err) {
-        console.log('[ERROR] Pairing failed:', err.message);
-        setTimeout(() => process.exit(1), 3000);
-      }
-    }
+    console.log('\n');
+    console.log('═══════════════════════════════════════════');
+    console.log(` 🔥🔥 CODE: ${code} 🔥🔥`);
+    console.log('═══════════════════════════════════════════\n');
+  } catch (err) {
+    console.log('[ERROR] Pairing failed:', err.message);
+    global.pairingStarted = false;
+  }
+}
 
     if (connection === 'open') {
       console.log('\n🎉🎉 iPHONE 8 LINKED SUCCESSFULLY 🎉🎉🎉\n');
