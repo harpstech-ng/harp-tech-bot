@@ -1206,7 +1206,6 @@ async function startBot() {
         }
       }, 60000); // 60 SECOND DELAY - THIS IS THE KEY
     }
-        }
       };
 
       sock.ev.on('connection.update', (u) => {
