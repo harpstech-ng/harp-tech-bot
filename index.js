@@ -24,6 +24,15 @@ const {
   findSmmService,
   calcSmmCost,
 } = require('./services');
+process.on('uncaughtException', (err) => {
+  console.log('[CRITICAL] Uncaught Exception:', err.message);
+  // DON'T exit - let Baileys retry connection
+});
+
+process.on('unhandledRejection', (err) => {
+  console.log('[CRITICAL] Unhandled Rejection:', err.message);
+  // DON'T exit - let Baileys retry connection  
+});
 // WEBSITE BUILDER DISABLED FOR V1 - Harps Tech
 // const { generateSiteHTML } = require('./templates');
 // const { isValidRepoName, deployStaticSite } = require('./github');
@@ -1159,29 +1168,41 @@ async function startBot() {
 const sock = makeWASocket({
   auth: state,
   printQRInTerminal: false,
+  browser: ['Ubuntu', 'Chrome', '22.04.4'],
   // ... your other config
 });
 
-// === ADD THIS BLOCK RIGHT HERE - AFTER makeWASocket ===
-if (!sock.authState.creds.registered) {
+// === CORRECT PAIRING CODE - ONLY RUN ONCE ===
+if (!state.creds.registered && !global.pairingLock) {
+  global.pairingLock = true;
   console.log('!!! HARPS TECH INSTANT MODE!!!');
-  setTimeout(async () => {
-    try {
-      const code = await sock.requestPairingCode(PHONE_NUMBER);
-      console.log('\n');
-      console.log('═══════════════════════════════════════════');
-      console.log(` 🔥🔥 CODE: ${code} 🔥🔥`);
-      console.log('═══════════════════════════════════════════\n');
-    } catch (err) {
-      console.log('[ERROR] Pairing failed:', err.message);
+  
+  // Wait for socket to fully connect first
+  sock.ev.on('connection.update', async (update) => {
+    const { connection } = update;
+    
+    if (connection === 'connecting' && !sock.authState.creds.registered) {
+      try {
+        // Wait 10 seconds for Baileys to write keys to creds.json
+        await new Promise(resolve => setTimeout(resolve, 10000));
+        
+        const code = await sock.requestPairingCode(PHONE_NUMBER);
+        console.log('\n');
+        console.log('═══════════════════════════════════════════');
+        console.log(` 🔥🔥 CODE: ${code} 🔥🔥`);
+        console.log('═══════════════════════════════════════════\n');
+      } catch (err) {
+        console.log('[ERROR] Pairing failed:', err.message);
+        global.pairingLock = false;
+      }
     }
-  }, 8000); // 8 sec delay after sock creation
+  });
 }
-// === END BLOCK ===
+// === END CORRECT BLOCK ===
 
 sock.ev.on('connection.update', (update) => {
   const { connection, lastDisconnect } = update;
-  // REMOVE ALL PAIRING CODE FROM HERE
+  // NO PAIRING CODE HERE AGAIN
   
   if (connection === 'open') {
     console.log('iPHONE 8 LINKED SUCCESSFULLY');
