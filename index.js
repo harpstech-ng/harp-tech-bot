@@ -1148,12 +1148,13 @@ function cmdPanic(reply, senderNumber) {
 async function startBot() {
   if (!fs.existsSync(AUTH_FOLDER)) fs.mkdirSync(AUTH_FOLDER, { recursive: true });
   
-  // Fix ENOENT error
+  // ADD THIS ↓↓↓ TO FIX ENOENT
   const credsPath = path.join(AUTH_FOLDER, 'creds.json');
   if (!fs.existsSync(credsPath)) {
     fs.writeFileSync(credsPath, JSON.stringify({}), 'utf8');
   }
-
+  // END FIX ↑↑↑
+  
   const { state, saveCreds } = await useMultiFileAuthState(AUTH_FOLDER);
   const { version } = await fetchLatestBaileysVersion();
 
