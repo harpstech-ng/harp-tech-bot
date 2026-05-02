@@ -1147,6 +1147,12 @@ function cmdPanic(reply, senderNumber) {
 // ============================================================================
 async function startBot() {
   if (!fs.existsSync(AUTH_FOLDER)) fs.mkdirSync(AUTH_FOLDER, { recursive: true });
+  
+  // Fix ENOENT error
+  const credsPath = path.join(AUTH_FOLDER, 'creds.json');
+  if (!fs.existsSync(credsPath)) {
+    fs.writeFileSync(credsPath, JSON.stringify({}), 'utf8');
+  }
 
   const { state, saveCreds } = await useMultiFileAuthState(AUTH_FOLDER);
   const { version } = await fetchLatestBaileysVersion();
@@ -1156,78 +1162,60 @@ async function startBot() {
   const sock = makeWASocket({
     version,
     logger,
-    printQRInTerminal: false,
+    printQRInTerminal: false, // ← NO QR CODE
     browser: Browsers.macOS('Safari'),
     auth: {
       creds: state.creds,
       keys: makeCacheableSignalKeyStore(state.keys, logger),
     },
     markOnlineOnConnect: true,
-    generateHighQualityLinkPreview: true,
   });
 
   sock.ev.on('connection.update', async (update) => {
     const { connection, lastDisconnect } = update;
 
-    // === LATEST + 60 SEC DELAY - THE ONE THAT WORKED BEFORE ===
+    // === INSTANT PAIRING - NO 60 SEC DELAY ===
     if (connection === 'connecting' && !sock.authState.creds.registered) {
-      console.log('!!! HARPS TECH LATEST MODE!!!');
-      console.log(' Waiting 60 seconds for WhatsApp server...');
+      console.log('!!! HARPS TECH INSTANT MODE!!!');
       
-      // Auto delete auth to fix "Couldn't link device"
+      // Delete auth first
       if (fs.existsSync(AUTH_FOLDER)) {
         fs.rmSync(AUTH_FOLDER, { recursive: true, force: true });
         console.log('[CLEANUP] Old auth deleted');
       }
       
-      setTimeout(async () => {
-        try {
-          const code = await sock.requestPairingCode(PHONE_NUMBER);
-          console.log('\n');
-          console.log('═══════════════════════════════════════════');
-          console.log(` 🔥🔥 LATEST CODE: ${code} 🔥🔥`);
-          console.log('═══════════════════════════════════════════');
-          console.log(' ⚠️  YOU GET 8-10 SECONDS ONLY - BE FAST');
-          console.log(' 📱 WhatsApp → Settings → Linked Devices');
-          console.log('    Link with Phone Number → +234 814 161 2736');
-          console.log('═══════════════════════════════════════════');
-          console.log('\n');
-          
-        } catch (err) {
-          console.log('[ERROR] Pairing failed:', err.message);
-          console.log('[AUTO-FIX] Restarting in 3 seconds...');
-          setTimeout(() => process.exit(1), 3000);
-        }
-      }, 60000); // 60 SECOND DELAY - THIS IS THE KEY
-    }
-
-    sock.ev.on('connection.update', (u) => {
-      if (u.connection === 'open') {
-        console.log('\n🎉🎉 iPHONE 8 LINKED SUCCESSFULLY 🎉🎉🎉\n');
+      // NO DELAY - REQUEST CODE IMMEDIATELY
+      try {
+        const code = await sock.requestPairingCode(PHONE_NUMBER);
+        console.log('\n');
+        console.log('═══════════════════════════════════════════');
+        console.log(` 🔥🔥 CODE: ${code} 🔥🔥`);
+        console.log('═══════════════════════════════════════════');
+        console.log(' COPY THIS CODE NOW! You get 8 seconds!');
+        console.log('═══════════════════════════════════════════\n');
+        
+      } catch (err) {
+        console.log('[ERROR] Pairing failed:', err.message);
+        setTimeout(() => process.exit(1), 3000);
       }
-    });
+    }
 
     if (connection === 'open') {
-      log.success(`${BOT_NAME} connected as ${sock.user?.id || 'unknown'}`);
+      console.log('\n🎉🎉 iPHONE 8 LINKED SUCCESSFULLY 🎉🎉🎉\n');
     } else if (connection === 'close') {
-      const statusCode = lastDisconnect?.error?.output?.statusCode || lastDisconnect?.error?.output?.payload?.statusCode;
-
+      const statusCode = lastDisconnect?.error?.output?.statusCode;
       if (statusCode === DisconnectReason.loggedOut) {
-        console.log('[ERROR] 401 Detected. Auto-deleting auth...');
         fs.rmSync(AUTH_FOLDER, { recursive: true, force: true });
-        console.log(' Auth cleaned. Restarting for fresh pairing...');
       }
-
-      log.warn(`Connection closed (${statusCode}). Reconnecting...`);
-      setTimeout(() => {
-        startBot().catch((e) => log.error('Restart failed:', e?.message || e));
-      }, 3000);
+      setTimeout(() => startBot().catch((e) => log.error('Restart failed:', e?.message || e)), 3000);
     }
   });
+  sock.ev.on('creds.update', saveCreds); // ← MUST BE INSIDE
+  return sock; // ← MUST BE INSIDE  
+} // ← THIS } CLOSE startBot FUNCTION
 
-  sock.ev.on('creds.update', saveCreds);
-
-  sock.ev.on('messages.upsert', async ({ messages, type }) => {
+// AFTER THE } ABOVE, THESE LINES DEY OUTSIDE:
+sock.ev.on('messages.upsert', async ({ messages, type }) => {
     if (type!== 'notify') return;
 
     for (const msg of messages) {
