@@ -1190,7 +1190,8 @@ async function startBot() {
   fs.writeFileSync(path.join(AUTH_FOLDER, 'creds.json'), JSON.stringify({}), 'utf8');
   console.log('[CLEANUP] Fresh auth created');
   // END FIX ↑↑↑
-  
+
+      try {  // ← ADD THIS LINE
   const code = await sock.requestPairingCode(PHONE_NUMBER);
         console.log('\n');
         console.log('═══════════════════════════════════════════');
