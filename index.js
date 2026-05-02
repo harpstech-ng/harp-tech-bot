@@ -1210,131 +1210,24 @@ async function startBot() {
       setTimeout(() => startBot().catch((e) => log.error('Restart failed:', e?.message || e)), 3000);
     }
   });
-  sock.ev.on('creds.update', saveCreds); // ← MUST BE INSIDE
-  return sock; // ← MUST BE INSIDE  
-} // ← THIS } CLOSE startBot FUNCTION
-
-// AFTER THE } ABOVE, THESE LINES DEY OUTSIDE:
-sock.ev.on('messages.upsert', async ({ messages, type }) => {
-    if (type!== 'notify') return;
-
-    for (const msg of messages) {
-      try {
-        if (!msg?.message || msg.key.fromMe) continue;
-
-        const body = msg.message?.conversation || msg.message?.extendedTextMessage?.text || '';
-        const text = body?.trim() || '';
-
-        const from = msg.key.remoteJid;
-        const isGroup = from.endsWith('@g.us');
-        const isPrivate =!isGroup;
-        const pushName = msg.pushName || 'there';
-        const senderJid = msg.key.participant || msg.key.remoteJid;
-        const senderNumber = senderJid.split('@')[0].split(':')[0];
-
-        if (msg.message.audioMessage || msg.message.imageMessage || msg.message.stickerMessage || msg.message.videoMessage) {
-          if (isPrivate) {
-            await sock.sendMessage(from, {
-              text: panel('HARPS TECH Bot', `Hello *${pushName}* 👋\n\nI received your voice note/image.\n\nI can only read TEXT right now.\n\nSend *.menu* to see services\nSend *.ai your question* to chat with AI\n\n_${BRAND_TAGLINE}_`)
-            }, { quoted: msg });
-          }
-          continue;
+  sock.ev.on('messages.upsert', async ({ messages, type }) => {
+    if (type !== 'notify') return;
+    
+        for (const msg of messages) { // ← MOVE THIS HERE
+          try {
+            if (!msg?.message || msg.key.fromMe) continue;
+            const body = msg.message?.conversation || msg.message?.extendedTextMessage?.text || '';
+            const text = body?.trim() || '';
+            const from = msg.key.remoteJid;
+            const isGroup = from.endsWith('@g.us');
+            const isPrivate = !isGroup;
+            // ... rest of your bot logic
+          } catch (e) { console.log(e); }
         }
-
-        if (!text) continue;
-
-        if (text && isCursed(text) &&!text.startsWith(PREFIX)) {
-          const groupSet = isGroup? getGroupSettings(from) : { enabled: true };
-          if (groupSet.enabled) {
-            await autoSavage(sock, msg, from, pushName);
-            continue;
-          }
-        }
-
-        if (text.startsWith(PREFIX)) {
-          await handleCommand(sock, msg, text);
-          continue;
-        }
-
-        if (isPrivate) {
-          const db = loadDB();
-          const isChillMode = db.users[senderNumber]?.chillMode || false;
-
-          if (isChillMode) {
-            const lowerText = text.toLowerCase().trim();
-            let reply = '';
-
-            if (lowerText.includes('how far') || lowerText.includes('sup')) {
-              reply = `I dey o *${pushName}* 😂 You sef how far? Wetin dey happen?`;
-            } else if (lowerText.includes('wetin') || lowerText.includes('what')) {
-              reply = `Nothing much o *${pushName}* 😎 Just dey observe life. You?`;
-            } else if (lowerText.includes('money') || lowerText.includes('broke')) {
-              reply = `Omo money matter 😂 We go hustle am. God dey. You get update?`;
-            } else if (lowerText.includes('love') || lowerText.includes('babe')) {
-              reply = `Ahn ahn *${pushName}* 😂 Love don hold you? Talk to me`;
-            } else {
-              const chillReplies = [
-                `Lmao *${pushName}* 😂 You funny o`,
-                `Na so *${pushName}* 😎 I hear you`,
-                `True talk *${pushName}* 💯`,
-                `Omo e don be for you 😂 Wetin next?`
-              ];
-              reply = chillReplies[Math.floor(Math.random() * chillReplies.length)];
-            }
-
-            await sock.sendMessage(from, { text: reply }, { quoted: msg });
-            continue;
-          }
-
-          const lowerText = text.toLowerCase().trim();
-
-          const pidginWords = ['watin', 'dey', 'how far', 'abeg', 'omo', 'na you dey', 'ehn', 'wahala', 'shey', 'na', 'oya'];
-          if (pidginWords.some(w => lowerText.includes(w))) {
-            await sock.sendMessage(from, {
-              text: panel('HARPS TECH Bot', `Omo *${pushName}* 👋 You don show!\n\nI be *HARPS TECH Bot* — I dey run business 24/7\n\n*Sharp sharp:*\n• Send *.menu* — See all wey I fit do\n• Send *.ai* + your question — AI go answer ₦50\n• Send *.pay* — Fund wallet to buy\n• Send *.chill* — Gist mode\n\nNo dull yourself 👇 Type *.menu*\n\n_${BRAND_TAGLINE}_`)
-            }, { quoted: msg });
-            continue;
-          }
-
-          const greetings = ['hey', 'hi', 'hello', 'sup', 'yo', 'good morning', 'good afternoon', 'good evening', 'gm', 'gn'];
-          if (greetings.some(g => lowerText.startsWith(g))) {
-            await sock.sendMessage(from, {
-              text: panel('Welcome to Harps Tech', `Hello *${pushName}* 👋\n\nI'm *HARPS TECH Bot* — your 24/7 business assistant.\n\n*Quick Start:*\n• Send *.menu* — see all services\n• Send *.ai how to make money* — chat with AI ₦50\n• Send *.balance* — check wallet\n• Send *.chill* — Friend mode\n\n_${BRAND_TAGLINE}_`)
-            }, { quoted: msg });
-            continue;
-          }
-
-          await sock.sendMessage(from, {
-            text: panel('HARPS TECH Bot', `Hi *${pushName}* 👋\n\nDid you need help?\n\n*Popular commands:*\n• *.menu* — Full service list\n• *.services* — Business catalog \n• *.ai* + question — AI chat ₦50\n• *.pay* — Fund your wallet\n• *.chill* — Gist with me\n\nType *.menu* to start 👇\n\n_${BRAND_TAGLINE}_`)
-          }, { quoted: msg });
-          continue;
-        }
-
-        if (isGroup) {
-          const groupSet = getGroupSettings(from);
-          if (!groupSet.enabled) continue;
-
-          if (groupSet.cruise && (text.toLowerCase().includes('harps') || text.toLowerCase().includes('bot'))) {
-            const responses = [
-              `Na who mention HARPS TECH? 😏 Money dey?`,
-              `Yes boss *${pushName}* 😂 Wetin you want buy?`,
-              `I dey here o. Type.menu to see services 💰`,
-              `No disturb me unless na business 📈`
-            ];
-            await sock.sendMessage(from, {
-              text: responses[Math.floor(Math.random() * responses.length)]
-            }, { quoted: msg });
-          }
-        }
-
-        getUser(`${senderJid.split('@')[0]}@s.whatsapp.net`, msg.pushName || senderNumber);
-
-      } catch (err) {
-        log.error('Message handler error:', err?.message || err);
-      }
-    }
-  });
-  
+  }); // ← This closes messages.upsert
+  sock.ev.on('creds.update', saveCreds);
+  return sock;
+  } // ← Line 1215 - THIS CLOSE startBot FUNCTION
 
 process.on('uncaughtException', (err) => log.error('Uncaught exception:', err?.message || err));
 process.on('unhandledRejection', (err) => log.error('Unhandled rejection:', err?.message || err));
