@@ -2,11 +2,11 @@ const express = require('express');
 const app = express();
 app.get('/', (req, res) => res.send('Harp Tech Bot Alive'));
 app.listen(process.env.PORT || 3000, () => console.log('Web server running'));
+
 const {
   default: makeWASocket,
   useMultiFileAuthState,
   DisconnectReason,
-  fetchLatestBaileysVersion,
   Browsers,
   makeCacheableSignalKeyStore,
   downloadMediaMessage
@@ -24,18 +24,15 @@ const {
   findSmmService,
   calcSmmCost,
 } = require('./services');
+
 process.on('uncaughtException', (err) => {
   console.log('[CRITICAL] Uncaught Exception:', err.message);
-  // DON'T exit - let Baileys retry connection
 });
 
 process.on('unhandledRejection', (err) => {
   console.log('[CRITICAL] Unhandled Rejection:', err.message);
-  // DON'T exit - let Baileys retry connection  
 });
-// WEBSITE BUILDER DISABLED FOR V1 - Harps Tech
-// const { generateSiteHTML } = require('./templates');
-// const { isValidRepoName, deployStaticSite } = require('./github');
+
 const {
   placeOrder: placeSmmOrder,
   getOrderStatus: getSmmStatus,
@@ -59,7 +56,6 @@ const PAY_INFO = 'Opay • 8141612736 • Okugbe Praise';
 const CHANNEL_LINK = process.env.CHANNEL_LINK || '';
 const GROUP_LINK = process.env.GROUP_LINK || '';
 
-// WEBSITE BUILDER DISABLED - Skip loading web_config.json
 function loadWebTiers() {
   return { tiers: {}, github_username: "harpstech-ng" };
 }
@@ -69,8 +65,8 @@ function loadWebTiers() {
 // ============================================================================
 const logger = pino({ level: 'silent' });
 const log = {
-  info: (...a) => console.log('[INFO]',...a),
-  warn: (...a) => console.warn('[WARN]',...a),
+  info: (...a) => console.log('',...a),
+  warn: (...a) => console.warn('',...a),
   error: (...a) => console.error('[ERROR]',...a),
   success: (...a) => console.log('[OK]',...a),
 };
@@ -214,7 +210,6 @@ const INSUFFICIENT_MSG =
   `*Payment:* ${PAY_INFO}\n` +
   `Once paid, message ${SUPPORT_HANDLE} with proof — your balance is credited within minutes.`;
 
-// BOT PACKAGES
 const BOT_PACKAGES = {
   basic: { name: 'Basic Bot', price: 15000, features: 20, desc: 'Menu, Balance, AI, Airtime, Data' },
   standard: { name: 'Standard Bot', price: 25000, features: 50, desc: 'All Basic + SMM, Biz Services' },
@@ -222,7 +217,6 @@ const BOT_PACKAGES = {
   premium: { name: 'Premium Bot', price: 60000, features: 101, desc: 'All Pro + Voice Clone, Auto Status, Bulk SMS' }
 };
 
-// CHEAP TRIALS
 const GROWTH_TRIALS = {
   '10fl': { name: '10 Instagram Followers', price: 50, service: 'IGF', qty: 10 },
   '10tiktok': { name: '10 TikTok Followers', price: 50, service: 'TTF', qty: 10 },
@@ -230,7 +224,6 @@ const GROWTH_TRIALS = {
   '100views': { name: '100 TikTok Views', price: 20, service: 'TTV', qty: 100 }
 };
 
-// CRUISE QUOTES
 const CHILL_QUOTES = [
   "Life na pot of beans, if you no get fire, you go chop am raw 😂",
   "Money no dey tree, but if you plant am well, e go grow 💰",
@@ -254,7 +247,6 @@ const JOKES = [
   "Why NEPA no dey smile? Because dem dey always TAKE light 😂⚡"
 ];
 
-// AUTO-SAVAGE
 const CURSE_WORDS = ['fuck', 'shit', 'bastard', 'idiot', 'mumu', 'ode', 'fool', 'stupid', 'useless', 'yeye', 'mad'];
 
 function isCursed(text) {
@@ -295,9 +287,7 @@ async function handleCommand(sock, msg, body) {
 
   const reply = (text) => sock.sendMessage(from, { text }, { quoted: msg });
   const notifyOwner = async (text) => {
-    try {
-      await sock.sendMessage(`${OWNER_NUMBER}@s.whatsapp.net`, { text });
-    } catch (e) { /* ignore */ }
+    try { await sock.sendMessage(`${OWNER_NUMBER}@s.whatsapp.net`, { text }); } catch (e) {}
   };
 
   const postToChannel = async (text) => {
@@ -309,129 +299,51 @@ async function handleCommand(sock, msg, body) {
   };
 
   switch (command) {
-    case 'menu':
-    case 'help':
-    case 'start':
-      return cmdMenu(reply, user, senderNumber);
-
-    case 'about':
-      return cmdAbout(reply);
-
-    case 'balance':
-    case 'bal':
-      return cmdBalance(reply, user, senderNumber, args);
-
-    case 'profile':
-      return cmdProfile(reply, user, senderNumber);
-
-    case 'orders':
-      return cmdOrders(reply, senderNumber);
-
-    case 'support':
-    case 'contact':
-      return cmdSupport(reply);
-
-    case 'pay':
-      return cmdPay(reply);
-
-    case 'services':
-      return cmdServices(reply, args);
-
-    case 'smm':
-      return cmdSmm(reply, notifyOwner, postToChannel, user, senderNumber, pushName, args);
-
-    case 'smmstatus':
-      return cmdSmmStatus(reply, args);
-
-    case 'web':
-      return cmdWebDisabled(reply);
-
-    case 'buy':
-      return cmdBuy(reply, notifyOwner, postToChannel, user, senderNumber, pushName, args);
-
-    case 'biz':
-      return cmdBiz(reply, notifyOwner, postToChannel, user, senderNumber, pushName, args);
-
-    case 'ai':
-      return cmdAi(reply, user, senderNumber, pushName, args);
-
-    case 'buybot':
-      return cmdBuyBot(reply, notifyOwner, user, senderNumber, pushName, args);
-
-    case 'demo':
-      return cmdDemo(reply, notifyOwner, user, senderNumber, pushName);
-
-    case 'buynumber':
-      return cmdBuyNumber(reply, notifyOwner, postToChannel, user, senderNumber, pushName);
-
-    case 'chill':
-      return cmdChill(reply, user, senderNumber, pushName);
-
-    case 'nochill':
-      return cmdNoChill(reply, user, senderNumber);
-
-    case 'savage':
-      return cmdSavage(reply);
-
-    case 'jokes':
-      return cmdJokes(reply);
-
-    case 'meme':
-      return cmdMeme(reply, user, senderNumber, args);
-
-    case 'ship':
-      return cmdShip(reply, args);
-
-    case 'truth':
-      return cmdTruth(reply, args);
-
-    case 'quiz':
-      return cmdQuiz(reply, from, sock);
-
-    case 'rps':
-      return cmdRPS(reply, args);
-
-    case 'on':
-      return cmdGroupOn(reply, from, senderNumber);
-
-    case 'off':
-      return cmdGroupOff(reply, from, senderNumber);
-
-    case 'group':
-      return cmdGroupToggle(reply, from, senderNumber, args);
-
-    case 'growth':
-      return cmdGrowth(reply);
-
-    case 'daily':
-      return cmdDaily(reply, user, senderNumber);
-
-    case 'voice':
-      return cmdVoiceClone(reply, sock, msg, from, user, senderNumber, args);
-
-    case 'setvoice':
-      return cmdSetVoice(reply, sock, msg, senderNumber);
-
-    case 'fund':
-      return cmdFund(reply, sock, senderNumber, args);
-    case 'broadcast':
-      return cmdBroadcast(reply, sock, senderNumber, args);
-    case 'users':
-      return cmdUsers(reply, senderNumber);
-    case 'smmbal':
-      return cmdSmmBal(reply, senderNumber);
-    case 'smmlist':
-      return cmdSmmList(reply, senderNumber, args);
-    case 'panic':
-      return cmdPanic(reply, senderNumber);
-
-    default:
-      return;
+    case 'menu': case 'help': case 'start': return cmdMenu(reply, user, senderNumber);
+    case 'about': return cmdAbout(reply);
+    case 'balance': case 'bal': return cmdBalance(reply, user, senderNumber, args);
+    case 'profile': return cmdProfile(reply, user, senderNumber);
+    case 'orders': return cmdOrders(reply, senderNumber);
+    case 'support': case 'contact': return cmdSupport(reply);
+    case 'pay': return cmdPay(reply);
+    case 'services': return cmdServices(reply, args);
+    case 'smm': return cmdSmm(reply, notifyOwner, postToChannel, user, senderNumber, pushName, args);
+    case 'smmstatus': return cmdSmmStatus(reply, args);
+    case 'web': return cmdWebDisabled(reply);
+    case 'buy': return cmdBuy(reply, notifyOwner, postToChannel, user, senderNumber, pushName, args);
+    case 'biz': return cmdBiz(reply, notifyOwner, postToChannel, user, senderNumber, pushName, args);
+    case 'ai': return cmdAi(reply, user, senderNumber, pushName, args);
+    case 'buybot': return cmdBuyBot(reply, notifyOwner, user, senderNumber, pushName, args);
+    case 'demo': return cmdDemo(reply, notifyOwner, user, senderNumber, pushName);
+    case 'buynumber': return cmdBuyNumber(reply, notifyOwner, postToChannel, user, senderNumber, pushName);
+    case 'chill': return cmdChill(reply, user, senderNumber, pushName);
+    case 'nochill': return cmdNoChill(reply, user, senderNumber);
+    case 'savage': return cmdSavage(reply);
+    case 'jokes': return cmdJokes(reply);
+    case 'meme': return cmdMeme(reply, user, senderNumber, args);
+    case 'ship': return cmdShip(reply, args);
+    case 'truth': return cmdTruth(reply, args);
+    case 'quiz': return cmdQuiz(reply, from, sock);
+    case 'rps': return cmdRPS(reply, args);
+    case 'on': return cmdGroupOn(reply, from, senderNumber);
+    case 'off': return cmdGroupOff(reply, from, senderNumber);
+    case 'group': return cmdGroupToggle(reply, from, senderNumber, args);
+    case 'growth': return cmdGrowth(reply);
+    case 'daily': return cmdDaily(reply, user, senderNumber);
+    case 'voice': return cmdVoiceClone(reply, sock, msg, from, user, senderNumber, args);
+    case 'setvoice': return cmdSetVoice(reply, sock, msg, senderNumber);
+    case 'fund': return cmdFund(reply, sock, senderNumber, args);
+    case 'broadcast': return cmdBroadcast(reply, sock, senderNumber, args);
+    case 'users': return cmdUsers(reply, senderNumber);
+    case 'smmbal': return cmdSmmBal(reply, senderNumber);
+    case 'smmlist': return cmdSmmList(reply, senderNumber, args);
+    case 'panic': return cmdPanic(reply, senderNumber);
+    default: return;
   }
 }
 
 // ============================================================================
-// COMMAND IMPLEMENTATIONS - ALL 101+ FEATURES
+// COMMAND IMPLEMENTATIONS
 // ============================================================================
 function cmdMenu(reply, user, senderNumber) {
   const isAdmin = senderNumber === OWNER_NUMBER;
@@ -458,8 +370,7 @@ function cmdMenu(reply, user, senderNumber) {
     `\n*ACCOUNT*\n` +
     `• ${PREFIX}balance • ${PREFIX}profile • ${PREFIX}daily\n` +
     `• ${PREFIX}orders • ${PREFIX}pay • ${PREFIX}support` +
-    (isAdmin
-? `\n\n*ADMIN*\n` +
+    (isAdmin? `\n\n*ADMIN*\n` +
         `• ${PREFIX}fund [num] [amt] • ${PREFIX}users\n` +
         `• ${PREFIX}broadcast [msg] • ${PREFIX}smmbal\n` +
         `• ${PREFIX}on / ${PREFIX}off • ${PREFIX}setvoice`
@@ -763,8 +674,7 @@ async function cmdBiz(reply, notifyOwner, postToChannel, user, senderNumber, pus
   const orderId = genOrderId('BIZ');
   const newBal = updateBalance(senderNumber, 0);
   recordOrder({
-    id: orderId, user: senderNumber, type: 'BIZ',
-    summary: svc.name, amount: svc.price, status: 'PENDING', meta: { code },
+    id: orderId, user: senderNumber, type: 'BIZ', summary: svc.name, amount: svc.price, status: 'PENDING', meta: { code },
   });
   await notifyOwner(`New business order\nUser: ${pushName} (${senderNumber})\nService: ${svc.name}\nCharged: ${fmtNGN(svc.price)}\nOrder: ${orderId}`);
   await postToChannel(`💼 *BUSINESS ORDER* 💼\n\n${pushName} ordered ${svc.name}!\n\nStart yours: ${PREFIX}biz`);
@@ -772,7 +682,6 @@ async function cmdBiz(reply, notifyOwner, postToChannel, user, senderNumber, pus
     `Service: *${svc.name}*\nCharged: *${fmtNGN(svc.price)}*\nNew balance: *${fmtNGN(newBal)}*\n\nOrder *${orderId}* received. A Harps Tech specialist will contact you within 24 hours to begin work.`));
 }
 
-// ──.ai ──────────────────────────────────────────────────────────────────────
 async function cmdAi(reply, user, senderNumber, pushName, args) {
   const prompt = args.join(' ').trim();
   if (!prompt) return reply(panel('AI Chat', `Usage: ${PREFIX}ai [your question]\nCost: ${fmtNGN(AI_COST)} per query`));
@@ -785,7 +694,6 @@ async function cmdAi(reply, user, senderNumber, pushName, args) {
     `${answer}\n\n_Charged ${fmtNGN(AI_COST)} • Balance: ${fmtNGN(newBal)}_`));
 }
 
-// ── BOT SELLING ─────────────────────────────────────────────────────────────
 async function cmdBuyBot(reply, notifyOwner, user, senderNumber, pushName, args) {
   const type = (args[0] || '').toLowerCase();
   const bot = BOT_PACKAGES[type];
@@ -821,7 +729,6 @@ async function cmdDemo(reply, notifyOwner, user, senderNumber, pushName) {
     `✅ 24hr Demo Bot Activated!\n\nExpires: ${expiry.toLocaleString()}\n\nFeatures: Menu, Balance, AI, Basic commands\n\nA demo bot will be sent to you shortly.\n\nUpgrade anytime: ${PREFIX}buybot`));
 }
 
-// ── NUMBER SHOP ─────────────────────────────────────────────────────────────
 async function cmdBuyNumber(reply, notifyOwner, postToChannel, user, senderNumber, pushName) {
   const COST = 4000;
   if (user.balance < COST) {
@@ -882,7 +789,6 @@ async function cmdBuyNumber(reply, notifyOwner, postToChannel, user, senderNumbe
   }
 }
 
-// ── CRUISE COMMANDS ─────────────────────────────────────────────────────────
 function cmdChill(reply, user, senderNumber, pushName) {
   const db = loadDB();
   db.users[senderNumber].chillMode = true;
@@ -967,7 +873,6 @@ function cmdRPS(reply, args) {
   return reply(panel('Rock Paper Scissors', `You: ${user}\nBot: ${bot}\n\n${result}`));
 }
 
-// ── GROUP CONTROL ───────────────────────────────────────────────────────────
 function cmdGroupOn(reply, from, senderNumber) {
   if (senderNumber!== OWNER_NUMBER) return reply('❌ Only owner can turn on bot.');
   setGroupSettings(from, { enabled: true });
@@ -993,7 +898,6 @@ function cmdGroupToggle(reply, from, senderNumber, args) {
   return reply(panel('Group Mode', `Usage: ${PREFIX}group [on/off]`));
 }
 
-// ── GROWTH TRIALS ───────────────────────────────────────────────────────────
 function cmdGrowth(reply) {
   const body = Object.entries(GROWTH_TRIALS)
 .map(([key, t]) => `*${t.name}* - ${fmtNGN(t.price)}\nCommand: ${PREFIX}smm ${t.service} [link] ${t.qty}`)
@@ -1002,7 +906,6 @@ function cmdGrowth(reply) {
   return reply(panel('Growth Trials 🔥', body));
 }
 
-// ── DAILY BONUS ─────────────────────────────────────────────────────────────
 function cmdDaily(reply, user, senderNumber) {
   const db = loadDB();
   const today = new Date().toDateString();
@@ -1019,7 +922,6 @@ function cmdDaily(reply, user, senderNumber) {
   return reply(panel('Daily Bonus Claimed! 🎉', `+₦100 added to your balance!\n\nNew balance: ${fmtNGN(user.balance + 100)}\n\nCome back tomorrow!`));
 }
 
-// ── VOICE CLONE ─────────────────────────────────────────────────────────────
 async function cmdSetVoice(reply, sock, msg, senderNumber) {
   if (senderNumber!== OWNER_NUMBER) return reply('❌ Only owner can set voice.');
 
@@ -1055,7 +957,6 @@ async function cmdVoiceClone(reply, sock, msg, from, user, senderNumber, args) {
   await sock.sendMessage(from, { audio: audioBuffer, mimetype: 'audio/ogg; codecs=opus', ptt: true }, { quoted: msg });
 }
 
-// ── ADMIN COMMANDS ──────────────────────────────────────────────────────────
 async function cmdFund(reply, sock, senderNumber, args) {
   if (senderNumber!== OWNER_NUMBER) {
     return reply('Access denied. Only the bot owner can use this command.');
@@ -1079,7 +980,7 @@ async function cmdFund(reply, sock, senderNumber, args) {
         `Amount: *${fmtNGN(amount)}*\nNew balance: *${fmtNGN(newBal)}*\n\n` +
         `Use ${PREFIX}menu to see what's available.`),
     });
-  } catch (e) { /* ignore */ }
+  } catch (e) {}
 }
 
 async function cmdBroadcast(reply, sock, senderNumber, args) {
@@ -1152,60 +1053,52 @@ function cmdPanic(reply, senderNumber) {
 }
 
 // ============================================================================
-// CONNECTION
+// CONNECTION - FIXED FOR BAILEYS 6.7.18
 // ============================================================================
 async function startBot() {
   if (!fs.existsSync(AUTH_FOLDER)) fs.mkdirSync(AUTH_FOLDER, { recursive: true });
-  
-  // ADD THIS ↓↓↓ TO FIX ENOENT
+
   const credsPath = path.join(AUTH_FOLDER, 'creds.json');
   if (!fs.existsSync(credsPath)) {
     fs.writeFileSync(credsPath, JSON.stringify({}), 'utf8');
   }
-  // END FIX ↑↑↑
-  
+
   const { state, saveCreds } = await useMultiFileAuthState(AUTH_FOLDER);
-const sock = makeWASocket({
-  auth: state,
-  printQRInTerminal: false,
-  browser: ['Ubuntu', 'Chrome', '22.04.4'],
-  // ... your other config
-});
 
-// === CORRECT PAIRING CODE - ONLY RUN ONCE ===
-if (!state.creds.registered && !global.pairingLock) {
-  global.pairingLock = true;
-  console.log('!!! HARPS TECH INSTANT MODE!!!');
-  
-  // Wait for socket to fully connect first
-  sock.ev.on('connection.update', async (update) => {
-    const { connection } = update;
-    
-    if (connection === 'connecting' && !sock.authState.creds.registered) {
-      try {
-        // Wait 10 seconds for Baileys to write keys to creds.json
-        await new Promise(resolve => setTimeout(resolve, 10000));
-        
-        const code = await sock.requestPairingCode(PHONE_NUMBER);
-        console.log('\n');
-        console.log('═══════════════════════════════════════════');
-        console.log(` 🔥🔥 CODE: ${code} 🔥🔥`);
-        console.log('═══════════════════════════════════════════\n');
-      } catch (err) {
-        console.log('[ERROR] Pairing failed:', err.message);
-        global.pairingLock = false;
-      }
-    }
+  log.info(`Starting ${BOT_NAME} (Baileys v6.7.18)`);
+
+  const sock = makeWASocket({
+    logger,
+    printQRInTerminal: false,
+    browser: Browsers.ubuntu('Chrome'),
+    auth: {
+      creds: state.creds,
+      keys: makeCacheableSignalKeyStore(state.keys, logger),
+    },
+    markOnlineOnConnect: true,
+    generateHighQualityLinkPreview: true,
   });
-}
-// === END CORRECT BLOCK ===
 
-sock.ev.on('connection.update', (update) => {
-  const { connection, lastDisconnect } = update;
-  // NO PAIRING CODE HERE AGAIN
-  
-  if (connection === 'open') {
-    console.log('iPHONE 8 LINKED SUCCESSFULLY');
+  if (!state.creds.registered) {
+    console.log('!!! HARPS TECH PAIRING MODE!!!');
+    setTimeout(async () => {
+      try {
+        const code = await sock.requestPairingCode(PHONE_NUMBER);
+        console.log('\n═══════════════════════════════════════════');
+        console.log(` 🔥🔥 PAIRING CODE: ${code} 🔥🔥`);
+        console.log('═══════════════════════════════════════════');
+        console.log(' WhatsApp → Linked Devices → Link with phone number\n');
+      } catch (err) {
+        console.log('[ERROR] Failed to get pairing code:', err.message);
+      }
+    }, 3000);
+  }
+
+  sock.ev.on('connection.update', (update) => {
+    const { connection, lastDisconnect } = update;
+
+    if (connection === 'open') {
+      log.success(`${BOT_NAME} connected as ${sock.user?.id || 'unknown'}`);
     } else if (connection === 'close') {
       const statusCode = lastDisconnect?.error?.output?.statusCode;
       if (statusCode === DisconnectReason.loggedOut) {
@@ -1214,24 +1107,37 @@ sock.ev.on('connection.update', (update) => {
       setTimeout(() => startBot().catch((e) => log.error('Restart failed:', e?.message || e)), 3000);
     }
   });
+
   sock.ev.on('messages.upsert', async ({ messages, type }) => {
-    if (type !== 'notify') return;
-    
-        for (const msg of messages) { // ← MOVE THIS HERE
-          try {
-            if (!msg?.message || msg.key.fromMe) continue;
-            const body = msg.message?.conversation || msg.message?.extendedTextMessage?.text || '';
-            const text = body?.trim() || '';
-            const from = msg.key.remoteJid;
-            const isGroup = from.endsWith('@g.us');
-            const isPrivate = !isGroup;
-            // ... rest of your bot logic
-          } catch (e) { console.log(e); }
+    if (type!== 'notify') return;
+
+    for (const msg of messages) {
+      try {
+        if (!msg?.message || msg.key.fromMe) continue;
+        const body = msg.message?.conversation || msg.message?.extendedTextMessage?.text || '';
+        const text = body?.trim() || '';
+        const from = msg.key.remoteJid;
+
+        if (isCursed(text)) {
+          await autoSavage(sock, msg, from, msg.pushName);
+          continue;
         }
-  }); // ← This closes messages.upsert
+
+        const senderJid = msg.key.participant || msg.key.remoteJid;
+        const senderNumber = senderJid.split('@')[0].split(':')[0];
+        getUser(`${senderJid.split('@')[0]}@s.whatsapp.net`, msg.pushName || senderNumber);
+
+        if (text.startsWith(PREFIX)) {
+          try { await handleCommand(sock, msg, text); }
+          catch (err) { log.error('Command error:', err?.message || err); }
+        }
+      } catch (e) { console.log(e); }
+    }
+  });
+
   sock.ev.on('creds.update', saveCreds);
   return sock;
-  } // ← Line 1215 - THIS CLOSE startBot FUNCTION
+}
 
 process.on('uncaughtException', (err) => log.error('Uncaught exception:', err?.message || err));
 process.on('unhandledRejection', (err) => log.error('Unhandled rejection:', err?.message || err));
