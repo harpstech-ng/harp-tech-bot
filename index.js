@@ -1191,8 +1191,9 @@ async function startBot() {
   console.log('[CLEANUP] Fresh auth created');
   // END FIX ↑↑↑
 
-      try {  // ← ADD THIS LINE
-  const code = await sock.requestPairingCode(PHONE_NUMBER);
+      try {
+    await new Promise(resolve => setTimeout(resolve, 3000)); // ← ADD 3 SEC DELAY
+    const code = await sock.requestPairingCode(PHONE_NUMBER);
         console.log('\n');
         console.log('═══════════════════════════════════════════');
         console.log(` 🔥🔥 CODE: ${code} 🔥🔥`);
